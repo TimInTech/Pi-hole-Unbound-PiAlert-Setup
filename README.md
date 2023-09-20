@@ -57,9 +57,3 @@ Dive into the world of network monitoring and ad-blocking with Pi-hole and Pi.Al
    ```bash
    SCAN_SUBNETS = [ '192.168.0.1/24', '192.168.178.0/24' ]
    ```
-
-3. Save the file and exit the editor.
-
----
-
-**Note**: Always ensure to check the official documentation and repositories for the most up-to-date installation instructions and best practices.
