@@ -37,13 +37,14 @@ sudo systemctl restart pihole-FTL
 Pi.Alert monitors the network and detects new devices.
 
 ### Pi.Alert Installation
-```bash
+
+````
 sudo apt update && sudo apt install git -y
-git clone https://github.com/jokobsk/Pi.Alert.git /opt/pi.alert
-cd /opt/pi.alert
-chmod +x install.sh
-sudo ./install.sh
-```
+git clone https://github.com/jokob-sk/NetAlertX.git /opt/netalertx
+cd /opt/netalertx
+chmod +x install/install.debian.sh
+sudo ./install/install.debian.sh
+````
 Once installed, access the web interface at `http://<IP>:20211`.
 
 ---
