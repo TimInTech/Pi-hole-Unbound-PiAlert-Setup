@@ -1,11 +1,28 @@
-# Pi-hole & Pi.Alert Installation with Unbound as Upstream DNS
+# Pi-hole + Unbound + PiAlert Setup
 
-## Introduction
-This guide provides step-by-step instructions for installing and configuring **Pi-hole** for network-wide ad blocking, **Pi.Alert** for network device monitoring, and **Unbound** as an independent DNS resolver.
+![Pi-hole + Unbound Setup](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/blob/main/image.png)
+
+This repository provides a detailed guide on setting up **Pi-hole with Unbound** as a local DNS resolver and **PiAlert** for network monitoring.
+
+## 📌 Comprehensive Pi-hole 6 Configuration
+If you're looking for an **in-depth guide** with additional optimizations, check out my full **Pi-hole v6.0 - Comprehensive Guide**:
+
+➡ **[Pi-hole v6.0 - Comprehensive Guide](https://github.com/TimInTech/Pi-hole-v6.0---Comprehensive-Guide)**
+
+### Features included:
+- Advanced **Pi-hole configurations**
+- Optimized **DNS settings**
+- **Blocklist & whitelist** management
+- Additional **performance and privacy tweaks**
+
+## 🔹 Feedback & Updates
+Feel free to share your feedback and suggestions! If you find any issues or have ideas for improvements, open an **Issue** or submit a **Pull Request**.
 
 ---
 
-## 1. Installing Pi-hole
+# Installation Guide
+
+## 1️⃣ Installing Pi-hole
 Pi-hole filters DNS requests to block advertisements across the network.
 
 ### Installation on Ubuntu/Debian
@@ -15,10 +32,8 @@ curl -sSL https://install.pi-hole.net | bash
 Follow the installation prompts and note down your web interface login credentials.
 
 ### Accessing the Web Interface
-```bash
-http://pi.hole/admin
-```
-Or replace `pi.hole` with the Pi-hole server’s IP address.
+- Open: `http://pi.hole/admin`
+- Or replace `pi.hole` with your Pi-hole server’s IP address.
 
 ### Post-Installation Configuration
 Update block lists and rules:
@@ -33,24 +48,23 @@ sudo systemctl restart pihole-FTL
 
 ---
 
-## 2. Installing Pi.Alert
+## 2️⃣ Installing Pi.Alert
 Pi.Alert monitors the network and detects new devices.
 
 ### Pi.Alert Installation
-
-````
+```bash
 sudo apt update && sudo apt install git -y
 git clone https://github.com/jokob-sk/NetAlertX.git /opt/netalertx
 cd /opt/netalertx
 chmod +x install/install.debian.sh
 sudo ./install/install.debian.sh
-````
+```
 Once installed, access the web interface at `http://<IP>:20211`.
 
 ---
 
-## 3. Setting Up Unbound as an Upstream DNS for Pi-hole
-Unbound allows **independent and secure** DNS resolution without third-party services.
+## 3️⃣ Setting Up Unbound as an Upstream DNS for Pi-hole
+Unbound allows independent and secure DNS resolution without third-party services.
 
 ### Installing Unbound
 ```bash
@@ -62,9 +76,8 @@ Create the configuration file:
 ```bash
 sudo nano /etc/unbound/unbound.conf.d/pi-hole.conf
 ```
-
 Add the following content:
-```ini
+```yaml
 server:
     verbosity: 0
     interface: 127.0.0.1
@@ -100,19 +113,19 @@ sudo systemctl enable unbound
 
 ---
 
-## 4. Configuring Pi-hole to Use Unbound as Upstream DNS
-1. Open the **Pi-hole Web Interface** (`http://pi.hole/admin`).
+## 4️⃣ Configuring Pi-hole to Use Unbound as Upstream DNS
+1. Open the Pi-hole Web Interface (`http://pi.hole/admin`).
 2. Navigate to **Settings → DNS**.
-3. Disable **all external DNS providers** (Google, Cloudflare, OpenDNS, etc.).
+3. Disable all external DNS providers (Google, Cloudflare, OpenDNS, etc.).
 4. Set `127.0.0.1#5335` as the upstream DNS.
 5. Save the changes and restart Pi-hole:
-   ```bash
-   pihole restartdns
-   ```
+```bash
+pihole restartdns
+```
 
 ---
 
-## 5. Testing Unbound Functionality
+## 5️⃣ Testing Unbound Functionality
 Verify that Unbound resolves DNS queries correctly:
 ```bash
 dig google.com @127.0.0.1 -p 5335
@@ -121,45 +134,47 @@ If the response contains `status: NOERROR`, the configuration is working correct
 
 ---
 
-## 6. Common Issues & Solutions
+## 6️⃣ Common Issues & Solutions
+
 ### "SERVFAIL" Error in DNS Resolution
-- Check if Unbound is running:
-  ```bash
-  sudo systemctl status unbound
-  ```
-- Test Unbound manually:
-  ```bash
+Check if Unbound is running:
+```bash
+sudo systemctl status unbound
+```
+Test Unbound manually:
+```bash
 dig google.com @127.0.0.1 -p 5335
-  ```
+```
 
 ### Slow DNS Resolution
-- Ensure root server hints are correctly downloaded.
-- Disable DNSSEC in Pi-hole (Unbound handles it already).
+- Ensure **root server hints** are correctly downloaded.
+- Disable **DNSSEC in Pi-hole** (Unbound handles it already).
 
 ### Issues with IPv6 DNS Resolution
 If IPv6 is required:
 - Change `do-ip6: no` to `do-ip6: yes` in the Unbound config file.
-- Check your network's IPv6 settings.
+- Check your network's **IPv6 settings**.
 
 ### "Connection refused" Error
 If Unbound is not responding:
 - Ensure the firewall is not blocking port 5335:
-  ```bash
-  sudo ufw allow 5335/tcp
-  sudo ufw reload
-  ```
+```bash
+sudo ufw allow 5335/tcp
+sudo ufw reload
+```
 
 ---
 
-## 7. Optimization & Advanced Settings
+## 7️⃣ Optimization & Advanced Settings
+
 ### Increase Cache Size
-```ini
+```yaml
 cache-max-ttl: 86400
 cache-min-ttl: 3600
 ```
 
 ### Enable Error Logging
-```ini
+```yaml
 logfile: "/var/log/unbound.log"
 ```
 Check the log for troubleshooting:
@@ -175,16 +190,8 @@ If the response includes `status: NOERROR`, DNSSEC is correctly configured.
 
 ---
 
-## 8. Conclusion
-With this setup, you achieve a **fast, secure, and private** DNS system:
-✔ **Ad-blocking (Pi-hole)** for a cleaner browsing experience  
-✔ **Network monitoring (Pi.Alert)** for better control  
-✔ **Independent DNS resolution (Unbound)** for privacy  
-
-This combination not only enhances security and privacy but also improves DNS response times. If any issues arise, check the logs or refer to community discussions for troubleshooting.
-
----
-
-### 📌 Tags:
-`Pi-hole`, `Unbound`, `Pi.Alert`, `Ad Blocker`, `Self-hosted DNS`, `Network Security`, `Recursive DNS`, `Linux`, `Ubuntu`, `Privacy`, `Firewall`, `DNSSEC`
-
+## 8️⃣ Conclusion
+With this setup, you achieve a **fast, secure, and private DNS system**:
+✔ **Ad-blocking (Pi-hole)** for a cleaner browsing experience
+✔ **Network monitoring (Pi.Alert)** for better control
+✔ **Independent DNS resolution (Unbound)** for privacy
