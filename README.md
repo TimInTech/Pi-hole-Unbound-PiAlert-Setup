@@ -1,6 +1,6 @@
 # Pi-hole + Unbound + PiAlert Setup
 
-![Pi-hole + Unbound Setup](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/blob/main/image.png)
+![Pi-hole + Unbound Setup](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/blob/main/eea62b352f4d0301.png)
 
 This repository provides a detailed guide on setting up **Pi-hole with Unbound** as a local DNS resolver and **PiAlert** for network monitoring.
 
