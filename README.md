@@ -1,3 +1,6 @@
+
+
+
 # Pi-hole + Unbound + PiAlert Setup
 
 ![Pi-hole + Unbound Setup](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/blob/main/eea62b352f4d0301.png)
@@ -9,6 +12,11 @@ If you're looking for an **in-depth guide** with additional optimizations, check
 
 ➡ **[Pi-hole v6.0 - Comprehensive Guide](https://github.com/TimInTech/Pi-hole-v6.0---Comprehensive-Guide)**
 
+🔗 **Official Resources**  
+[GitHub Repository](https://github.com/pi-hole/pi-hole) | [v6 Migration Guide](https://docs.pi-hole.net/docker/upgrading/v5-v6/)  
+---
+
+**Recommended Hardware**: [Raspberry Pi 4 Kit (8GB)](https://amzn.to/4gXEciT) with NVMe SSD via USB 3.0
 ### Features included:
 - Advanced **Pi-hole configurations**
 - Optimized **DNS settings**
