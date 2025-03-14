@@ -203,3 +203,6 @@ With this setup, you achieve a **fast, secure, and private DNS system**:
 ✔ **Ad-blocking (Pi-hole)** for a cleaner browsing experience
 ✔ **Network monitoring (Pi.Alert)** for better control
 ✔ **Independent DNS resolution (Unbound)** for privacy
+
+## 📌 Troubleshooting & Common Issues
+For common Pi-hole v6 issues and solutions, check out the **[Troubleshooting Guide](TROUBLESHOOTING.md)**.
