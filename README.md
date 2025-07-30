@@ -1,11 +1,13 @@
 
 
 
-# Pi-hole + Unbound + PiAlert Setup
+# Pi-hole + Unbound + Pi.Alert Setup
 
 ![Pi-hole + Unbound Setup](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/blob/main/eea62b352f4d0301.png)
 
-This repository provides a detailed guide on setting up **Pi-hole with Unbound** as a local DNS resolver and **PiAlert** for network monitoring.
+This repository provides a detailed guide on setting up **Pi-hole with Unbound** as a local DNS resolver and **Pi.Alert** for network monitoring.
+
+**Note:** This guide consistently uses the official "Pi.Alert" spelling.
 
 ## 📌 Comprehensive Pi-hole 6 Configuration
 If you're looking for an **in-depth guide** with additional optimizations, check out my full **Pi-hole v6.0 - Comprehensive Guide**:
