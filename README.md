@@ -24,6 +24,7 @@ If you're looking for an **in-depth guide** with additional optimizations, check
 - Optimized **DNS settings**
 - **Blocklist & whitelist** management
 - Additional **performance and privacy tweaks**
+- Integrated **Python monitoring suite** (`start_suite.py`) with REST API
 
 ## Table of Contents
 - [Installation Guide](#installation-guide)
@@ -35,6 +36,7 @@ If you're looking for an **in-depth guide** with additional optimizations, check
   - [6️⃣ Common Issues & Solutions](#6-common-issues-solutions)
   - [7️⃣ Optimization & Advanced Settings](#7-optimization-advanced-settings)
   - [8️⃣ Conclusion](#8-conclusion)
+- [🚀 Integrated Python Suite](#-integrated-python-suite)
 - [Troubleshooting & Common Issues](#troubleshooting-common-issues)
 
 ## 🔹 Feedback & Updates
@@ -217,6 +219,11 @@ With this setup, you achieve a **fast, secure, and private DNS system**:
 ✔ **Ad-blocking (Pi-hole)** for a cleaner browsing experience
 ✔ **Network monitoring (Pi.Alert)** for better control
 ✔ **Independent DNS resolution (Unbound)** for privacy
+
+## 🚀 Integrated Python Suite
+The repository now includes a lightweight monitoring stack written in Python.
+Run `./start_suite.py` to launch DNS logging, IP allocation helpers and the
+local REST API on `127.0.0.1:8090`.
 
 ## 📌 Troubleshooting & Common Issues
 For common Pi-hole v6 issues and solutions, check out the **[Troubleshooting Guide](TROUBLESHOOTING.md)**.
