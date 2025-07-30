@@ -16,7 +16,7 @@ If you're looking for an **in-depth guide** with additional optimizations, check
 [GitHub Repository](https://github.com/pi-hole/pi-hole) | [v6 Migration Guide](https://docs.pi-hole.net/docker/upgrading/v5-v6/)  
 ---
 
-**Recommended Hardware**: [Raspberry Pi 4 Kit (8GB)](https://amzn.to/4gXEciT) with NVMe SSD via USB 3.0
+**Recommended Hardware**: [Raspberry Pi 4 Kit (8GB)](https://amzn.to/4gXEciT) *(Amazon affiliate link)* with NVMe SSD via USB 3.0
 ### Features included:
 - Advanced **Pi-hole configurations**
 - Optimized **DNS settings**
