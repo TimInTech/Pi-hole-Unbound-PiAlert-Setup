@@ -23,6 +23,18 @@ If you're looking for an **in-depth guide** with additional optimizations, check
 - **Blocklist & whitelist** management
 - Additional **performance and privacy tweaks**
 
+## Table of Contents
+- [Installation Guide](#installation-guide)
+  - [1️⃣ Installing Pi-hole](#1-installing-pi-hole)
+  - [2️⃣ Installing Pi.Alert](#2-installing-pialert)
+  - [3️⃣ Setting Up Unbound as an Upstream DNS for Pi-hole](#3-setting-up-unbound-as-an-upstream-dns-for-pi-hole)
+  - [4️⃣ Configuring Pi-hole to Use Unbound as Upstream DNS](#4-configuring-pi-hole-to-use-unbound-as-upstream-dns)
+  - [5️⃣ Testing Unbound Functionality](#5-testing-unbound-functionality)
+  - [6️⃣ Common Issues & Solutions](#6-common-issues-solutions)
+  - [7️⃣ Optimization & Advanced Settings](#7-optimization-advanced-settings)
+  - [8️⃣ Conclusion](#8-conclusion)
+- [Troubleshooting & Common Issues](#troubleshooting-common-issues)
+
 ## 🔹 Feedback & Updates
 Feel free to share your feedback and suggestions! If you find any issues or have ideas for improvements, open an **Issue** or submit a **Pull Request**.
 
