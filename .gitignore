@@ -9,3 +9,18 @@ __pycache__/
 .idea/
 .vscode/
 data/
+# runtime/junk
+data/
+*.db
+*.sqlite
+*.log
+*.pid
+.env
+.env.*
+*.bak
+*.swp
+*.tmp
+# OS / Python
+.DS_Store
+__pycache__/
+*.pyc
