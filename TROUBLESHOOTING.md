@@ -26,4 +26,3 @@ Updated for v6.1.3 (2025).
 
 ## 📝 6. Reporting
 `pihole -d` for logs.
-

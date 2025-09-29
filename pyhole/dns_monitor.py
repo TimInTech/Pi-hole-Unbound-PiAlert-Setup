@@ -20,7 +20,7 @@ def parse_line(line: str) -> Optional[Tuple[str, str, str, str]]:
     action = parts[2]
     client = parts[3].rstrip(':')
     query = parts[4]
-    return timestamp, client, query, action  # Improved parsing
+    return timestamp, client, query, action
 
 def monitor(conn, log_path: Optional[Path] = None):
     log_path = log_path or PIHOLE_LOG

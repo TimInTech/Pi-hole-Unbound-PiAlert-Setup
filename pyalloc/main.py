@@ -2,7 +2,6 @@ import threading
 import time
 import logging
 from .allocator import IPPool
-from shared import db
 
 logger = logging.getLogger(__name__)
 
@@ -17,11 +16,9 @@ def start(conn, network: str = "192.168.0.0/24"):
     thread.start()
     return thread
 
-
 def _run(conn):
     while not _stop_event.is_set():
         time.sleep(60)  # Placeholder; add real DHCP hook in production
-
 
 def stop():
     _stop_event.set()

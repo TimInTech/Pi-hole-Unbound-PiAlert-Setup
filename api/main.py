@@ -1,5 +1,4 @@
 from fastapi import FastAPI, Depends, HTTPException, Header
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import os
 import sqlite3
@@ -30,8 +29,11 @@ def require_key(x_api_key: str = Header(default="")):
 
 @app.on_event("startup")
 def _ensure_db():
-    # Ensure schema exists when running the API directly via uvicorn
     init_db()
+
+@app.get("/health")
+def health():
+    return {"ok": True}
 
 @app.get("/dns", dependencies=[Depends(require_key)])
 def get_dns_logs(limit: int = 50, db=Depends(get_db)):
