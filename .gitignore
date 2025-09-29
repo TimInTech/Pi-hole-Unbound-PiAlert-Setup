@@ -1,26 +1,21 @@
-*.log
-*.env
-node_modules/
-.DS_Store
-.venv/
-__pycache__/
-*.pyc
-.DS_Store
+# IDE/OS
 .idea/
 .vscode/
-data/
-# runtime/junk
-data/
-*.db
-*.sqlite
-*.log
-*.pid
-.env
-.env.*
-*.bak
-*.swp
-*.tmp
-# OS / Python
 .DS_Store
+Thumbs.db
+
+# Python
 __pycache__/
 *.pyc
+*.log
+*.pid
+*.db
+*.sqlite
+
+# Build
+dist/
+build/
+
+# Env
+.env
+.env.*
