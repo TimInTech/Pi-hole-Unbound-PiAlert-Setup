@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
-"""Basic healthcheck script."""
+"""Healthcheck."""
 import sqlite3
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from shared import shared_config as config
 
 try:
-    sqlite3.connect(config.DB_PATH).close()
-    print("Database reachable")
-except Exception as exc:
-    print(f"Healthcheck failed: {exc}")
-    raise SystemExit(1)
+    with sqlite3.connect(config.DB_PATH) as conn:
+        conn.execute("SELECT 1")
+    print("Database healthy")
+except Exception as e:
+    print(f"Failed: {e}")
+    sys.exit(1)

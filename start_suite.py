@@ -1,31 +1,30 @@
 #!/usr/bin/env python3
-"""Entry point to start the integrated monitoring suite."""
+"""Entry point for monitoring suite. Updated for Python 3.12."""
+import asyncio
 import threading
 import uvicorn
-from api import main as api_main
-from shared import db
-from pyhole import dns_monitor
-from pyalloc import main as alloc_main
+from api.main import app as api_app
+from shared.db import init_db
+from pyhole.dns_monitor import start as dns_start
+from pyalloc.main import start as alloc_start
 
-
-def run_api():
-    uvicorn.run(api_main.app, host="127.0.0.1", port=8090, log_level="info")
-
+async def run_api():
+    config = uvicorn.Config(api_app, host="127.0.0.1", port=8090, log_level="info")
+    server = uvicorn.Server(config)
+    await server.serve()
 
 def main():
-    conn = db.init_db()
-    dns_monitor.start(conn)
-    alloc_main.start(conn)
-    api_thread = threading.Thread(target=run_api, daemon=True)
-    api_thread.start()
+    conn = init_db()
+    dns_thread = threading.Thread(target=dns_start, args=(conn,), daemon=True)
+    alloc_thread = threading.Thread(target=alloc_start, args=(conn,), daemon=True)
+    dns_thread.start()
+    alloc_thread.start()
+    
     try:
-        while True:
-            api_thread.join(1)
+        asyncio.run(run_api())
     except KeyboardInterrupt:
-        dns_monitor.stop()
-        alloc_main.stop()
-        print("Shutting down")
-
+        print("Shutting down...")
+        # Graceful stop logic here if needed
 
 if __name__ == "__main__":
     main()

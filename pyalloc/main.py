@@ -13,8 +13,6 @@ def start(conn, network: str = "192.168.0.0/24"):
     global _pool
     _pool = IPPool(network)
     logger.info("Starting IP allocator on %s", network)
-    # This stub does not dynamically assign leases; in a real system,
-    # DHCP hooks would update the database.
     thread = threading.Thread(target=_run, args=(conn,), daemon=True)
     thread.start()
     return thread
@@ -22,7 +20,7 @@ def start(conn, network: str = "192.168.0.0/24"):
 
 def _run(conn):
     while not _stop_event.is_set():
-        time.sleep(60)
+        time.sleep(60)  # Placeholder; add real DHCP hook in production
 
 
 def stop():

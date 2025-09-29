@@ -1,7 +1,6 @@
 import ipaddress
 import logging
 import threading
-import time
 from typing import List
 
 logger = logging.getLogger(__name__)
@@ -24,5 +23,6 @@ class IPPool:
 
     def release(self, ip: str) -> None:
         with self.lock:
-            self.allocated.discard(ip)
-            logger.info("Released IP %s", ip)
+            if ip in self.allocated:
+                self.allocated.discard(ip)
+                logger.info("Released IP %s", ip)
