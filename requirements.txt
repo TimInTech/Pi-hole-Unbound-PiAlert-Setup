@@ -1,0 +1,8 @@
+fastapi>=0.115.0,<1
+uvicorn[standard]>=0.30,<1
+pydantic>=2.8,<3
+typing-extensions>=4.12,<5
+colorlog>=6.8,<7
+requests>=2.32,<3
+ruff>=0.6,<1
+pytest>=8.3,<9
