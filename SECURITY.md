@@ -1,13 +1,7 @@
 # 🔐 Security Policy
 
 ## 🧩 Supported Versions
+Latest only (v2.0.0).
 
-We currently support the latest version of this project only.
-
-## 📢 Reporting a Vulnerability
-
-If you discover a security vulnerability, **please do not open an issue publicly**.
-
-Instead, contact the maintainer **Tim (github.com/TimInTech)** privately via GitHub or email, and we will respond as quickly as possible.
-
-All responsible disclosures will be acknowledged.
+## 📢 Reporting
+Private contact to TimInTech via GitHub. Updated for 2025 disclosures.

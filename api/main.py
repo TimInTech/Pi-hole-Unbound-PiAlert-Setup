@@ -4,6 +4,7 @@ from pydantic import BaseModel
 import os
 import sqlite3
 from shared import shared_config as config
+from shared.db import init_db
 
 app = FastAPI(title="Pi-hole Suite API v2")
 
@@ -26,6 +27,11 @@ def get_db():
 def require_key(x_api_key: str = Header(default="")):
     if API_KEY and x_api_key != API_KEY:
         raise HTTPException(status_code=401, detail="Invalid API key")
+
+@app.on_event("startup")
+def _ensure_db():
+    # Ensure schema exists when running the API directly via uvicorn
+    init_db()
 
 @app.get("/dns", dependencies=[Depends(require_key)])
 def get_dns_logs(limit: int = 50, db=Depends(get_db)):
