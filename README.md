@@ -1,35 +1,26 @@
 # Pi-hole + Unbound + NetAlertX — Setup & Minimal Python Suite
 
-> 🌐 **Languages:** English (this file) • 🇩🇪 [Deutsch](README.de.md)  
-> 🧰 **Stack icons:**  
+> 🌐 Languages: English (this file) • 🇩🇪 [Deutsch](README.de.md)  
+> 🧰 Stack icons:  
 > <img src="https://skillicons.dev/icons?i=linux,debian,ubuntu,raspberrypi,bash,python,fastapi,sqlite,docker" alt="stack icons" />
 
-This repository provides a concise helper to set up **Pi-hole v6.x** with **Unbound** (local, validating resolver) and some notes for **NetAlertX**. It also includes a **minimal Python suite** (FastAPI + SQLite) for simple DNS/device logging and health checks.  
-It is **not** a full installer; it documents the small API that lives here and how to run it locally.
+This repository provides a concise helper to set up **Pi-hole v6.x** with **Unbound** (local, validating resolver) and notes for **NetAlertX**. It also includes a **minimal Python suite** (FastAPI + SQLite) for DNS/device logging and health checks.  
+It is not a full installer; it documents the small API here and how to run it locally.
 
 ---
 
 ## What’s inside
 
-- **Minimal API (FastAPI)**:
-  - `GET /health` (OK check)
-  - `GET /dns?limit=N` (recent DNS log rows)
-  - `GET /leases` (IP leases)
-  - `GET /devices` (devices table)
-- **SQLite schema & init** (`shared/db.py`) with indexes
-- **Lightweight workers (optional/placeholders)**:
-  - `pyhole/dns_monitor.py` tails `/var/log/pihole.log` → `dns_logs`
-  - `pyalloc/*` simple IP allocator skeleton
-- **Helper scripts**
-  - `scripts/bootstrap.py` dependency sanity check
-  - `scripts/healthcheck.py` DB connectivity check
+- Minimal API (FastAPI): `/health`, `/dns?limit=N`, `/leases`, `/devices`
+- SQLite schema & init (`shared/db.py`) with indexes
+- Lightweight workers (optional/placeholders): `pyhole/dns_monitor.py`, `pyalloc/*`
+- Helper scripts: `scripts/bootstrap.py`, `scripts/healthcheck.py`
 
 ---
 
 ## Repository layout
 
-```
-
+~~~text
 .
 ├─ api/
 │  └─ main.py              # FastAPI app; DB init on startup
@@ -48,16 +39,13 @@ It is **not** a full installer; it documents the small API that lives here and h
 ├─ requirements.txt
 ├─ README.md               # EN
 └─ README.de.md            # DE
-
-```
+~~~
 
 ---
 
 ## Quick start: Mini Suite (API)
 
-**Python 3.12+ recommended**
-
-```bash
+~~~bash
 cd ~/github_repos/Pi-hole-Unbound-PiAlert-Setup
 python3 -m venv .venv
 source .venv/bin/activate
@@ -66,32 +54,32 @@ pip install -r requirements.txt
 python3 scripts/bootstrap.py
 export SUITE_API_KEY="testkey"   # optional but recommended
 python3 start_suite.py
-```
+~~~
 
 Smoke test:
 
-```bash
+~~~bash
 curl -s -H "X-API-Key: testkey" http://127.0.0.1:8090/health | python -m json.tool
-```
+~~~
 
 ---
 
 ## Pi-hole + Unbound on Debian/Ubuntu (copy/paste)
 
-> Assumes Pi-hole v6.x is already installed. Commands use `sudo`.
+Assumes Pi-hole v6.x is already installed. Commands use sudo.
 
 ### 1) Install Unbound & get root hints
 
-```bash
+~~~bash
 sudo apt-get update
 sudo apt-get install -y unbound ca-certificates curl
 sudo install -d -m 0755 /var/lib/unbound
 sudo curl -fsSL https://www.internic.net/domain/named.root -o /var/lib/unbound/root.hints
-```
+~~~
 
 ### 2) Minimal Unbound config (listens on loopback:5335)
 
-```bash
+~~~bash
 sudo tee /etc/unbound/unbound.conf.d/pi-hole.conf >/dev/null <<'CONF'
 server:
   verbosity: 0
@@ -119,54 +107,44 @@ forward-zone:
   forward-addr: 9.9.9.9#dns.quad9.net
   forward-addr: 149.112.112.112#dns.quad9.net
 CONF
-```
+~~~
 
 Initialize trust anchor & restart:
 
-```bash
+~~~bash
 sudo unbound-anchor -a /var/lib/unbound/root.key || true
 sudo systemctl enable --now unbound
 sudo systemctl restart unbound
 sudo systemctl status --no-pager unbound
-```
+~~~
 
 Quick check:
 
-```bash
+~~~bash
 dig +short @127.0.0.1 -p 5335 example.com
-```
+~~~
 
 ### 3) Point Pi-hole to Unbound
 
-* **Pi-hole Admin → Settings → DNS → Custom upstream**: `127.0.0.1#5335`
-* Disable any other upstreams, save, then:
+Pi-hole Admin → Settings → DNS → Custom upstream: 127.0.0.1#5335  
+Disable any other upstreams, save, then:
 
-```bash
+~~~bash
 pihole restartdns
-```
-
-### 4) (Optional) NetAlertX note
-
-If you use **NetAlertX**, ensure it doesn’t conflict with Pi-hole DNS port; NetAlertX is orthogonal here.
+~~~
 
 ---
 
 ## API (short reference)
 
-Base: `http://127.0.0.1:8090` • Auth header (optional if `SUITE_API_KEY` set): `X-API-Key: <value>`
+Base: http://127.0.0.1:8090 • Auth header (optional if SUITE_API_KEY set): X-API-Key: <value>
 
 | Method | Path       | Query         | Example result                                                                          |
 | -----: | ---------- | ------------- | --------------------------------------------------------------------------------------- |
-|    GET | `/health`  | —             | `{"ok": true}`                                                                          |
-|    GET | `/dns`     | `limit` (int) | `[{"timestamp":"...", "client":"...", "query":"...", "action":"..."}]`                  |
-|    GET | `/leases`  | —             | `[{"ip":"...", "mac":"...", "hostname":"...", "lease_start":"...", "lease_end":"..."}]` |
-|    GET | `/devices` | —             | `[{"ip":"...", "mac":"...", "hostname":"...", "last_seen":"..."}]`                      |
-
-Example:
-
-```bash
-curl -s -H "X-API-Key: testkey" "http://127.0.0.1:8090/dns?limit=5" | python -m json.tool
-```
+|    GET | /health    | —             | {"ok": true}                                                                            |
+|    GET | /dns       | limit (int)   | [{"timestamp":"...", "client":"...", "query":"...", "action":"..."}]                   |
+|    GET | /leases    | —             | [{"ip":"...", "mac":"...", "hostname":"...", "lease_start":"...", "lease_end":"..."}]  |
+|    GET | /devices   | —             | [{"ip":"...", "mac":"...", "hostname":"...", "last_seen":"..."}]                        |
 
 ---
 
@@ -174,30 +152,30 @@ curl -s -H "X-API-Key: testkey" "http://127.0.0.1:8090/dns?limit=5" | python -m 
 
 | Variable          | Default | Description                            |
 | ----------------- | ------- | -------------------------------------- |
-| `SUITE_API_KEY`   | (unset) | If set, header `X-API-Key` is required |
-| `SUITE_DATA_DIR`  | `data/` | Directory for the SQLite DB            |
-| `SUITE_INTERFACE` | `eth0`  | Informational                          |
-| `SUITE_DNS_PORT`  | `5335`  | Informational                          |
-| `SUITE_LOG_LEVEL` | `INFO`  | Logging level                          |
+| SUITE_API_KEY     | (unset) | If set, header X-API-Key is required   |
+| SUITE_DATA_DIR    | data/   | Directory for the SQLite DB            |
+| SUITE_INTERFACE   | eth0    | Informational                          |
+| SUITE_DNS_PORT    | 5335    | Informational                          |
+| SUITE_LOG_LEVEL   | INFO    | Logging level                          |
 
-DB path: **`$SUITE_DATA_DIR/shared.sqlite`** (default: `data/shared.sqlite`).
+DB path: SUITE_DATA_DIR/shared.sqlite (default: data/shared.sqlite).
 
 ---
 
 ## Troubleshooting
 
-| Symptom                                   | Likely cause / fix                                                                              |
-| ----------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `sqlite3.OperationalError: no such table` | Start the API once (it auto-inits) or run `from shared.db import init_db; init_db()` in Python. |
-| `401 Invalid API key`                     | Send correct `X-API-Key` header matching `SUITE_API_KEY`.                                       |
-| Empty `/dns` results                      | Seed rows or run the DNS monitor; ensure Pi-hole log path is correct.                           |
-| `curl` to `/health` fails                 | Check process/port; review `uvicorn` logs.                                                      |
+| Symptom                                   | Likely cause / fix                                                                           |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------- |
+| sqlite3.OperationalError: no such table   | Start the API once (auto-inits) or run: from shared.db import init_db; init_db()            |
+| 401 Invalid API key                        | Send correct X-API-Key header matching SUITE_API_KEY                                        |
+| Empty /dns results                         | Seed rows or run the DNS monitor; ensure Pi-hole log path is correct                        |
+| curl to /health fails                      | Check process/port; review uvicorn logs                                                     |
 
 ---
 
 ## Optional systemd
 
-```ini
+~~~ini
 [Unit]
 Description=Pi-hole Suite (API + workers)
 After=network.target
@@ -211,11 +189,11 @@ User=<USER>
 
 [Install]
 WantedBy=multi-user.target
-```
+~~~
 
 ---
 
 ## Changelog & License
 
-* See **CHANGELOG.md**
-* Licensed under **MIT** (see **LICENSE**)
+* See CHANGELOG.md
+* Licensed under MIT (see LICENSE)
