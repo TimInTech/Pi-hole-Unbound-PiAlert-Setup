@@ -5,16 +5,26 @@
 Thumbs.db
 
 # Python
+.venv/
 __pycache__/
 *.pyc
+*.pyo
+.mypy_cache/
+.ruff_cache/
 *.log
 *.pid
-*.db
-*.sqlite
 
-# Build
+# Databases
+*.sqlite
+*.sqlite3
+*.db
+
+# Build artifacts
 dist/
 build/
+
+# Local data
+data/
 
 # Env
 .env
