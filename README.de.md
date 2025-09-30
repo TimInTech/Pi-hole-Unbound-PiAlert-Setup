@@ -1,82 +1,29 @@
 # Pi-hole + Unbound + NetAlertX – Setup & Mini-Suite
 
-> 🌐 **Sprachen:** 🇬🇧 [English](README.md) • Deutsch (diese Datei)  
-> 🧰 **Stack-Icons:**  
-> <img src="https://skillicons.dev/icons?i=linux,debian,ubuntu,raspberrypi,bash,python,fastapi,sqlite,docker" alt="stack icons" />
+🌐 Sprachen: 🇬🇧 Englisch ([README.md]) • Deutsch (diese Datei)  
+🧰 Stack: <img src="https://skillicons.dev/icons?i=linux,debian,ubuntu,raspberrypi,bash,python,fastapi,sqlite,docker" />
 
-Dieses Repository liefert eine Kurzreferenz für **Pi-hole v6.x** mit **Unbound** sowie Hinweise zu **NetAlertX**. Zusätzlich gibt es eine **kleine Python-Suite** (FastAPI + SQLite) für DNS-/Geräte-Logs und Healthchecks.  
-Es ist **kein** vollwertiger Installer; die README beschreibt die vorhandene Mini-API und wie man sie lokal nutzt.
+Dieses Repository liefert eine **kompakte Anleitung** für **Pi-hole v6.x** mit **Unbound** und Hinweise zu **NetAlertX**.  
+Zusätzlich gibt es eine **optionale Minimal-Suite in Python** (FastAPI + SQLite), um DNS-/Geräte-Daten per kleiner API bereitzustellen.
 
 ---
 
 ## Inhalt
 
-* **Mini-API (FastAPI)**:
-  * `GET /health` (OK-Check)
-  * `GET /dns?limit=N` (letzte DNS-Logzeilen)
-  * `GET /leases` (IP-Leases)
-  * `GET /devices` (Geräte-Tabelle)
-* **SQLite-Schema & Init** (`shared/db.py`) mit Indizes
-* **Leichte Worker (optional/Platzhalter)**:
-  * `pyhole/dns_monitor.py` liest `/var/log/pihole.log` → `dns_logs`
-  * `pyalloc/*` einfacher IP-Allocator
-* **Helper-Skripte**
-  * `scripts/bootstrap.py` Bibliotheks-Check
-  * `scripts/healthcheck.py` DB-Test
+- **Anleitungen:**
+  - Pi-hole + Unbound auf Debian/Ubuntu
+  - Hinweise zu NetAlertX
+- **Optionale Python-Suite (FastAPI + SQLite):**
+  - Endpunkte: `/health`, `/dns?limit=N`, `/leases`, `/devices`
+  - Worker: `pyhole/dns_monitor.py`, `pyalloc/*`
+  - DB-Schema: `shared/db.py` → `data/shared.sqlite`
+  - Helfer: `scripts/bootstrap.py`, `scripts/healthcheck.py`
 
 ---
 
-## Struktur
+## Schnellstart: Pi-hole + Unbound (Debian/Ubuntu)
 
-~~~text
-.
-├─ api/
-│  └─ main.py              # FastAPI; DB-Init beim Start
-├─ shared/
-│  ├─ db.py                # SQLite-Schema + Init
-│  └─ shared_config.py     # ENV & Defaults
-├─ pyhole/
-│  └─ dns_monitor.py       # optional: Pi-hole-Log → dns_logs
-├─ pyalloc/
-│  ├─ allocator.py         # einfacher IP-Pool
-│  └─ main.py
-├─ scripts/
-│  ├─ bootstrap.py
-│  └─ healthcheck.py
-├─ start_suite.py
-├─ requirements.txt
-├─ README.md       # EN
-└─ README.de.md    # DE
-~~~
-
----
-
-## Schnellstart: Mini-Suite (API)
-
-~~~bash
-cd ~/github_repos/Pi-hole-Unbound-PiAlert-Setup
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -U pip
-pip install -r requirements.txt
-python3 scripts/bootstrap.py
-export SUITE_API_KEY="testkey"   # optional, empfohlen
-python3 start_suite.py
-~~~
-
-Smoke-Test:
-
-~~~bash
-curl -s -H "X-API-Key: testkey" http://127.0.0.1:8090/health | python -m json.tool
-~~~
-
----
-
-## Pi-hole + Unbound auf Debian/Ubuntu (copy & paste)
-
-> Pi-hole v6.x vorausgesetzt. Befehle nutzen `sudo`.
-
-### 1) Unbound installieren & Root-Hints laden
+### 1) Unbound installieren & Root-Hints
 
 ~~~bash
 sudo apt-get update
@@ -85,7 +32,7 @@ sudo install -d -m 0755 /var/lib/unbound
 sudo curl -fsSL https://www.internic.net/domain/named.root -o /var/lib/unbound/root.hints
 ~~~
 
-### 2) Minimale Unbound-Config (Loopback:5335)
+### 2) Minimale Unbound-Config (127.0.0.1:5335)
 
 ~~~bash
 sudo tee /etc/unbound/unbound.conf.d/pi-hole.conf >/dev/null <<'CONF'
@@ -134,58 +81,67 @@ dig +short @127.0.0.1 -p 5335 example.com
 
 ### 3) Pi-hole auf Unbound zeigen
 
-* **Pi-hole Admin → Settings → DNS → Custom Upstream**: `127.0.0.1#5335`
-* Andere Upstreams deaktivieren, speichern, dann:
+Pi-hole Admin → Settings → DNS → **Custom upstream**: `127.0.0.1#5335`, dann:
 
 ~~~bash
 pihole restartdns
 ~~~
 
-### 4) (Optional) NetAlertX
+---
 
-NetAlertX nicht am Pi-hole-DNS-Port binden; es ist hier unabhängig.
+## NetAlertX (Hinweis)
+
+NetAlertX kann parallel laufen; nicht am selben DNS-Port binden. Hier nutzt Pi-hole Unbound lokal auf `127.0.0.1:5335`.
 
 ---
 
-## API (Kurzreferenz)
+## Optional: Mini-Suite (FastAPI + SQLite)
 
-Basis: `http://127.0.0.1:8090` • Auth-Header (optional, falls `SUITE_API_KEY`): `X-API-Key: <Wert>`
+### Was enthalten ist
 
-| Methode | Pfad       | Query         | Beispiel                                     |
-| ------: | ---------- | ------------- | -------------------------------------------- |
-|     GET | `/health`  | —             | `{"ok": true}`                               |
-|     GET | `/dns`     | `limit` (int) | Liste mit `timestamp, client, query, action` |
-|     GET | `/leases`  | —             | `ip, mac, hostname, lease_start, lease_end`  |
-|     GET | `/devices` | —             | `ip, mac, hostname, last_seen`               |
+- **API**
+  - `GET /health`, `GET /dns?limit=N`, `GET /leases`, `GET /devices`
+- **Worker**
+  - `pyhole/dns_monitor.py` liest `/var/log/pihole.log` in `dns_logs`
+  - `pyalloc/*` als Demo-IP-Allocator
+- **Datenbank**
+  - SQLite unter `data/shared.sqlite` (Auto-Init)
 
----
+### Lokal starten
 
-## Konfiguration (ENV)
+~~~bash
+cd ~/github_repos/Pi-hole-Unbound-PiAlert-Setup
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -U pip
+pip install -r requirements.txt
+python3 scripts/bootstrap.py
+export SUITE_API_KEY="testkey"
+python3 start_suite.py
+~~~
 
-| Variable          | Default | Beschreibung                                  |
-| ----------------- | ------- | --------------------------------------------- |
-| `SUITE_API_KEY`   | (unset) | Wenn gesetzt, Header `X-API-Key` erforderlich |
-| `SUITE_DATA_DIR`  | `data/` | Verzeichnis für die SQLite-DB                 |
-| `SUITE_INTERFACE` | `eth0`  | Informativ                                    |
-| `SUITE_DNS_PORT`  | `5335`  | Informativ                                    |
-| `SUITE_LOG_LEVEL` | `INFO`  | Log-Level                                     |
+Smoke-Test:
 
-DB-Pfad: **`$SUITE_DATA_DIR/shared.sqlite`** (Standard: `data/shared.sqlite`).
+~~~bash
+curl -s -H "X-API-Key: testkey" http://127.0.0.1:8090/health | python -m json.tool
+~~~
 
----
+### ENV
 
-## Troubleshooting
+- `SUITE_API_KEY` (optional; wenn gesetzt, Header `X-API-Key` senden)
+- `SUITE_DATA_DIR` (Standard `data/`)
+- `SUITE_LOG_LEVEL` (Standard `INFO`)
 
-| Problem                    | Ursache / Lösung                                                          |
-| -------------------------- | ------------------------------------------------------------------------- |
-| `no such table` in SQLite  | API einmal starten (auto-init) oder `init_db()` manuell ausführen.        |
-| `401 Invalid API key`      | `X-API-Key` korrekt setzen (entspricht `SUITE_API_KEY`).                  |
-| Leere `/dns`-Ergebnisse    | Daten seeden oder DNS-Monitor laufen lassen; Pfad zum Pi-hole-Log prüfen. |
-| `/health` nicht erreichbar | Prozess/Port prüfen; `uvicorn`-Logs ansehen.                              |
+DB-Pfad: `data/shared.sqlite`.
 
----
+### Troubleshooting
 
-## Optional: systemd
+- `no such table` → API einmal starten (Auto-Init)
+- `401 Invalid API key` → Header prüfen
+- Leere `/dns` → Pfad zum Pi-hole-Log prüfen und Monitor laufen lassen
+- `/health` nicht erreichbar → Prozess/Port/Logs prüfen
+
+### Optionales systemd-Unit
 
 ~~~ini
 [Unit]
@@ -193,11 +149,11 @@ Description=Pi-hole Suite (API + workers)
 After=network.target
 
 [Service]
-WorkingDirectory=/home/<USER>/github_repos/Pi-hole-Unbound-PiAlert-Setup
+WorkingDirectory=/home/USER/github_repos/Pi-hole-Unbound-PiAlert-Setup
 Environment=SUITE_API_KEY=testkey
-ExecStart=/home/<USER>/github_repos/Pi-hole-Unbound-PiAlert-Setup/.venv/bin/python start_suite.py
+ExecStart=/home/USER/github_repos/Pi-hole-Unbound-PiAlert-Setup/.venv/bin/python start_suite.py
 Restart=always
-User=<USER>
+User=USER
 
 [Install]
 WantedBy=multi-user.target
@@ -205,7 +161,24 @@ WantedBy=multi-user.target
 
 ---
 
-## Changelog & Lizenz
+## Struktur
 
-* Änderungen: **CHANGELOG.md**
-* Lizenz: **MIT** (siehe **LICENSE**)
+~~~text
+.
+├─ api/
+├─ shared/
+├─ pyhole/
+├─ pyalloc/
+├─ scripts/
+├─ start_suite.py
+├─ requirements.txt
+├─ README.md
+└─ README.de.md
+~~~
+
+---
+
+## Lizenz
+
+MIT — siehe LICENSE.
+

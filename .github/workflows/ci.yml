@@ -4,30 +4,46 @@ on:
   push:
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  lint-test:
+  lint-and-smoke:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            pip-${{ runner.os }}-
+
+      - name: Install dependencies
         run: |
           python -m venv .venv
-          source .venv/bin/activate
+          . .venv/bin/activate
           pip install -U pip
           pip install -r requirements.txt
-      - name: Ruff
+
+      - name: Ruff (lint)
         run: |
-          source .venv/bin/activate
+          . .venv/bin/activate
           ruff check .
+
       - name: Import smoke
         run: |
-          source .venv/bin/activate
-          python - <<'PY'
-import fastapi
-import uvicorn
-import pydantic
+          . .venv/bin/activate
+          python - <<PY
+import fastapi, uvicorn, pydantic, sqlite3
 print("imports ok")
 PY
