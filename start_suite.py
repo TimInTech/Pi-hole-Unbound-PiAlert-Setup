@@ -19,8 +19,7 @@ async def run_api() -> None:
 
 
 def main() -> None:
-    if not os.environ.get("SUITE_API_KEY"):
-        raise ValueError("SUITE_API_KEY environment variable must be set")
+
     conn = init_db()
     threading.Thread(target=dns_start, args=(conn,), daemon=True).start()
     threading.Thread(target=alloc_start, args=(conn,), daemon=True).start()

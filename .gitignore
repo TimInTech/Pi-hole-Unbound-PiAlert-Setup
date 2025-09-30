@@ -5,23 +5,6 @@
 Thumbs.db
 
 # Python
-__pycache__/
-*.pyc
-*.log
-*.pid
-*.db
-*.sqlite
-*.egg-info/
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-.mypy_cache/
-.ruff_cache/
-
-# Build
-dist/
-build/
 
 # Env
 .env
