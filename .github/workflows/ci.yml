@@ -9,7 +9,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint-and-smoke:
+  ci_checks:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -24,7 +24,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: pip-${{ runner.os }}-${{ hashFiles('**/requirements.txt') }}
+          key: pip-${{ runner.os }}-${{ hashFiles('**/requirements.lock') }}
           restore-keys: |
             pip-${{ runner.os }}-
 
@@ -33,12 +33,19 @@ jobs:
           python -m venv .venv
           . .venv/bin/activate
           pip install -U pip
-          pip install -r requirements.txt
+          pip install -r requirements.lock
 
       - name: Ruff (lint)
         run: |
           . .venv/bin/activate
           ruff check .
+
+      - name: Run tests
+        env:
+          SUITE_API_KEY: test-key
+        run: |
+          . .venv/bin/activate
+          pytest tests/ -v
 
       - name: Import smoke
         run: |
