@@ -1,28 +1,5 @@
 name: CI
 
-on:
-  push:
-  pull_request:
+on: push: pull_request:
 
-jobs:
-  lint-test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install
-        run: |
-          python -m venv .venv
-          source .venv/bin/activate
-          pip install -U pip
-          pip install -r requirements.txt
-      - name: Ruff
-        run: |
-          source .venv/bin/activate
-          ruff check .
-      - name: Import smoke
-        run: |
-          source .venv/bin/activate
-          python -c "import fastapi, uvicorn, pydantic; print('imports ok')"
+jobs: lint-test: runs-on: ubuntu-latest steps: - uses: actions/checkout@v4 - uses: actions/setup-python@v5 with: python-version: "3.12" - name: Install run: | python -m venv .venv source .venv/bin/activate pip install -U pip pip install -r requirements.txt - name: Ruff run: | source .venv/bin/activate ruff check . - name: Import smoke run: | source .venv/bin/activate python -c "import fastapi, uvicorn, pydantic; print('imports ok')"
