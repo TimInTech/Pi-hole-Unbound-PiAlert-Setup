@@ -4,10 +4,6 @@ import sqlite3
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
-
-from shared import shared_config as config
 
 
 def main() -> None:

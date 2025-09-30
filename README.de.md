@@ -1,25 +1,6 @@
 # Pi-hole + Unbound + NetAlertX – Setup & Mini-Suite
 
 
-~~~bash
-cd ~/github_repos/Pi-hole-Unbound-PiAlert-Setup
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -U pip
-pip install -r requirements.txt
-python3 scripts/bootstrap.py
-
-python3 start_suite.py
-~~~
-
-Smoke-Test:
-
-~~~bash
-curl -s -H "X-API-Key: testkey" http://127.0.0.1:8090/health | python -m json.tool
-~~~
-
----
-
 
 ~~~bash
 sudo apt-get update
@@ -27,6 +8,7 @@ sudo apt-get install -y unbound ca-certificates curl
 sudo install -d -m 0755 /var/lib/unbound
 sudo curl -fsSL https://www.internic.net/domain/named.root -o /var/lib/unbound/root.hints
 ~~~
+
 
 
 ~~~bash
@@ -69,4 +51,5 @@ sudo systemctl status --no-pager unbound
 ~~~
 
 Kurztest:
+
 

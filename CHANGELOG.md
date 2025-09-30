@@ -1,4 +1,5 @@
 # Changelog
+
 ## v2.0.2 - 2025-09-29
 - Remove corrupted files and harden ignores
 - Add requirements.txt and minimal CI
