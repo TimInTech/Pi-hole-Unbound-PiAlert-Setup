@@ -11,6 +11,13 @@ __pycache__/
 *.pid
 *.db
 *.sqlite
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
 
 # Build
 dist/

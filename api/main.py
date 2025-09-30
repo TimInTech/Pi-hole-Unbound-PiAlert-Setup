@@ -1,13 +1,21 @@
 """FastAPI app exposing Pi-hole suite data."""
 import os
 import sqlite3
-from typing import Generator
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator, Generator
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from shared import shared_config as config
 from shared.db import init_db
 
-app = FastAPI(title="Pi-hole Suite API")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    init_db()
+    yield
+
+
+app = FastAPI(title="Pi-hole Suite API", lifespan=lifespan)
 
 
 def _get_api_key() -> str:
@@ -23,15 +31,15 @@ def get_db() -> Generator[sqlite3.Connection, None, None]:
         conn.close()
 
 
-def require_key(x_api_key: str = Header(default="")) -> None:
+def require_key(x_api_key: str = Header()) -> None:
     api_key = _get_api_key()
-    if api_key and x_api_key != api_key:
+    if not api_key:
+        raise HTTPException(status_code=500, detail="API key not configured")
+    if x_api_key != api_key:
         raise HTTPException(status_code=401, detail="Invalid API key")
 
 
-@app.on_event("startup")
-def _ensure_db() -> None:
-    init_db()
+
 
 
 @app.get("/health", dependencies=[Depends(require_key)])
