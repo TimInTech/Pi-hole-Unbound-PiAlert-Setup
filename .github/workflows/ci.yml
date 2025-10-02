@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 name: ci
 
 on:
@@ -6,6 +5,8 @@ on:
     branches: [ main, feat/* ]
   pull_request:
     branches: [ main ]
+
+
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
