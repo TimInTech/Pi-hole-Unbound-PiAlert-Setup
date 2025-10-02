@@ -1,200 +1,252 @@
-# Pi-hole + Unbound + NetAlertX — Setup & Minimale Python-Suite
+<div align="center">
 
-> 🌐 **Sprachen:** 🇬🇧 [English](README.md) • Deutsch (diese Datei)
-> 🧰 **Stack-Icons:** <img src="https://skillicons.dev/icons?i=linux,debian,ubuntu,raspberrypi,bash,python,fastapi,sqlite,docker" alt="stack icons" />
+# 🛡️ Pi-hole + Unbound + NetAlertX
+### **Ein-Klick DNS-Sicherheit & Monitoring-Stack**
 
-Dieses Repository enthält eine kompakte Hilfestellung für **Pi-hole**, **Unbound** und **NetAlertX** sowie eine **kleine Python-API** (FastAPI + SQLite) für einfache DNS-/Geräte-Logs und Healthchecks.
-Es ist **kein** vollständiger Installer; die README beschreibt den vorhandenen Code und wie man die kleine API lokal nutzt.
+[![Build Status](https://img.shields.io/github/actions/workflow/status/TimInTech/Pi-hole-Unbound-PiAlert-Setup/ci.yml?branch=main&style=for-the-badge&logo=github)](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/actions)
+[![License](https://img.shields.io/github/license/TimInTech/Pi-hole-Unbound-PiAlert-Setup?style=for-the-badge&color=blue)](LICENSE)
+[![Pi-hole](https://img.shields.io/badge/Pi--hole-v6.x-red?style=for-the-badge&logo=pihole)](https://pi-hole.net/)
+[![Unbound](https://img.shields.io/badge/Unbound-DNS-orange?style=for-the-badge)](https://nlnetlabs.nl/projects/unbound/)
+[![NetAlertX](https://img.shields.io/badge/NetAlertX-Monitor-green?style=for-the-badge)](https://github.com/jokob-sk/NetAlertX)
+[![Debian](https://img.shields.io/badge/Debian-Compatible-red?style=for-the-badge&logo=debian)](https://debian.org/)
+[![Python](https://img.shields.io/badge/Python-3.12+-blue?style=for-the-badge&logo=python)](https://python.org/)
 
----
+**🧰 Tech Stack**  
+<img src="https://skillicons.dev/icons?i=linux,debian,ubuntu,raspberrypi,bash,python,fastapi,sqlite,docker" alt="Tech Stack" />
 
-## Inhalt des Repos
+**🌐 Sprachen:** 🇩🇪 Deutsch (diese Datei) • [🇬🇧 English](README.md)
 
-* **Minimale API (FastAPI)** mit:
-
-  * `GET /health` (OK-Check)
-  * `GET /dns?limit=N` (letzte DNS-Logzeilen)
-  * `GET /leases` (IP-Leases)
-  * `GET /devices` (Geräte)
-* **SQLite-Schema & Init** (`shared/db.py`) mit Indizes
-* **Leichte Worker (Platzhalter):**
-
-  * `pyhole/dns_monitor.py` — liest `/var/log/pihole.log` und schreibt nach `dns_logs` (einfacher Parser)
-  * `pyalloc/*` — IP-Allocator-Skelett (noch ohne DHCP-Hook)
-* **Helper-Skripte**
-
-  * `scripts/bootstrap.py` — Bibliotheks-Check
-  * `scripts/healthcheck.py` — DB-Test
-  * (optional) `scripts/ci.sh` — lokaler Smoke-Test (Imports + `/health`)
+</div>
 
 ---
 
-## Struktur
+## ✨ Features
 
-```
-.
-├─ api/
-│  └─ main.py
-├─ shared/
-│  ├─ db.py
-│  └─ shared_config.py
-├─ pyhole/
-│  └─ dns_monitor.py
-├─ pyalloc/
-│  ├─ allocator.py
-│  └─ main.py
-├─ scripts/
-│  ├─ bootstrap.py
-│  ├─ healthcheck.py
-│  └─ ci.sh
-├─ start_suite.py
-├─ requirements.txt
-├─ README.md       # EN
-└─ README.de.md    # DE
-```
+✅ **Ein-Klick-Installation** - Setup mit einem Befehl  
+✅ **DNS-Sicherheit** - Pi-hole + Unbound mit DNSSEC  
+✅ **Netzwerk-Monitoring** - NetAlertX Geräte-Tracking  
+✅ **API-Monitoring** - Python FastAPI + SQLite  
+✅ **Produktionsbereit** - Systemd-Hardening & Auto-Restart  
+✅ **Idempotent** - Sicher mehrfach ausführbar  
 
 ---
 
-## Voraussetzungen
-
-* **Python**: 3.12+ empfohlen (3.13 funktioniert ebenfalls)
-* **OS**: Linux (Debian/Ubuntu/Raspberry Pi OS)
-* **Python-Pakete**:
-
-  * `fastapi==0.115.0`
-  * `uvicorn==0.30.6`
-  * `pydantic==2.9.2`
-
-Installation:
+## ⚡ Ein-Klick-Schnellstart
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+git clone https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup.git
+cd Pi-hole-Unbound-PiAlert-Setup
+chmod +x install.sh
+sudo ./install.sh
 ```
 
----
-
-## Konfiguration
-
-Umgebungsvariablen (siehe `shared/shared_config.py`):
-
-| Variable          | Default | Beschreibung                                  |
-| ----------------- | ------- | --------------------------------------------- |
-| `SUITE_API_KEY`   | (unset) | Wenn gesetzt, Header `X-API-Key` erforderlich |
-| `SUITE_DATA_DIR`  | `data/` | Verzeichnis für die SQLite-DB                 |
-| `SUITE_INTERFACE` | `eth0`  | Informativ                                    |
-| `SUITE_DNS_PORT`  | `5335`  | Informativ                                    |
-| `SUITE_LOG_LEVEL` | `INFO`  | Log-Level                                     |
-
-DB-Pfad: **`$SUITE_DATA_DIR/shared.sqlite`** (Standard: `data/shared.sqlite`).
+**Fertig!** 🎉 Ihr kompletter DNS-Sicherheits-Stack läuft jetzt.
 
 ---
 
-## Schnellstart (lokal)
+## 🧰 Was installiert wird
 
-**1) Bootstrap & DB-Check:**
+| Komponente | Zweck | Zugriff |
+|------------|-------|---------|
+| **🕳️ Pi-hole** | DNS-Werbeblocker & Web-UI | `http://[ihre-ip]/admin` |
+| **🔐 Unbound** | Rekursiver DNS + DNSSEC | `127.0.0.1:5335` |
+| **📡 NetAlertX** | Netzwerkgeräte-Monitoring | `http://[ihre-ip]:20211` |
+| **🐍 Python API** | Monitoring & Statistik-API | `http://127.0.0.1:8090` |
 
+---
+
+## 🗺️ Architektur
+
+```
+┌─────────────┐    ┌──────────────┐    ┌─────────────┐
+│   Clients   │───▶│   Pi-hole    │───▶│   Unbound   │
+│ 192.168.x.x │    │    :53       │    │   :5335     │
+└─────────────┘    └──────┬───────┘    └─────────────┘
+                          │                     │
+                          ▼                     ▼
+                   ┌─────────────┐    ┌─────────────┐
+                   │  NetAlertX  │    │ Root-Server │
+                   │   :20211    │    │  + Quad9    │
+                   └─────────────┘    └─────────────┘
+                          │
+                          ▼
+                   ┌─────────────┐
+                   │ Python API  │
+                   │   :8090     │
+                   └─────────────┘
+```
+
+**Datenfluss:**
+1. **Clients** → Pi-hole (DNS-Filterung)
+2. **Pi-hole** → Unbound (rekursive Auflösung)
+3. **Unbound** → Root-Server (DNSSEC-Validierung)
+4. **NetAlertX** → Netzwerk-Monitoring
+5. **Python API** → Aggregierte Monitoring-Daten
+
+---
+
+## 🔌 API-Referenz
+
+### Authentifizierung
+Alle Endpunkte benötigen `X-API-Key`-Header:
 ```bash
-source .venv/bin/activate
-python scripts/bootstrap.py
-python scripts/healthcheck.py
+curl -H "X-API-Key: ihr-api-key" http://127.0.0.1:8090/endpoint
 ```
 
-**2a) Nur API via uvicorn:**
+### Endpunkte
 
+#### `GET /health`
+```json
+{
+  "ok": true,
+  "message": "Pi-hole Suite API is running",
+  "version": "1.0.0"
+}
+```
+
+#### `GET /dns?limit=50`
+```json
+[
+  {
+    "timestamp": "Dec 21 10:30:45",
+    "client": "192.168.1.100", 
+    "query": "example.com",
+    "action": "query"
+  }
+]
+```
+
+#### `GET /devices`
+```json
+[
+  {
+    "id": 1,
+    "ip": "192.168.1.100",
+    "mac": "aa:bb:cc:dd:ee:ff", 
+    "hostname": "laptop",
+    "last_seen": "2024-12-21 10:30:00"
+  }
+]
+```
+
+#### `GET /stats`
+```json
+{
+  "total_dns_logs": 1250,
+  "total_devices": 15,
+  "recent_queries": 89
+}
+```
+
+---
+
+## 🛠️ Manuelle Schritte (Optional)
+
+### Pi-hole-Konfiguration
+1. Admin-Interface aufrufen: `http://[ihre-ip]/admin`
+2. **Einstellungen → DNS** navigieren
+3. **Custom upstream** prüfen: `127.0.0.1#5335`
+4. Geräte konfigurieren, um Pi-hole als DNS-Server zu verwenden
+
+### NetAlertX-Setup
+- Dashboard aufrufen: `http://[ihre-ip]:20211`
+- Scan-Zeitpläne und Benachrichtigungen konfigurieren
+- Netzwerk-Topologie und Geräteliste überprüfen
+
+---
+
+## 🧪 Gesundheitschecks & Problembehandlung
+
+### Schneller Gesundheitscheck
 ```bash
-export SUITE_API_KEY="testkey"   # optional, empfohlen
-uvicorn api.main:app --host 127.0.0.1 --port 8090 --log-level info
+# Unbound testen
+dig @127.0.0.1 -p 5335 example.com
+
+# Pi-hole testen
+pihole status
+
+# NetAlertX testen
+docker logs netalertx
+
+# Python API testen
+curl -H "X-API-Key: $SUITE_API_KEY" http://127.0.0.1:8090/health
 ```
 
-**2b) Ganze Suite (API + Threads) — optional:**
-
+### Service-Verwaltung
 ```bash
-export SUITE_API_KEY="testkey"
-python start_suite.py
+# Services prüfen
+systemctl status pihole-suite unbound pihole-FTL
+docker ps
+
+# Logs anzeigen  
+journalctl -u pihole-suite -f
+journalctl -u unbound -f
+
+# Services neustarten
+systemctl restart pihole-suite
+pihole restartdns
+docker restart netalertx
 ```
 
-**3) Smoke-Test:**
+### Häufige Probleme
 
-```bash
-curl -s http://127.0.0.1:8090/health | python -m json.tool
-```
-
-Mit API-Key:
-
-```bash
-curl -s -H "X-API-Key: testkey" http://127.0.0.1:8090/health | python -m json.tool
-```
+| Problem | Lösung |
+|---------|--------|
+| **Port 53 belegt** | `sudo systemctl stop systemd-resolved` |
+| **API-Key fehlt** | `.env`-Datei prüfen oder mit Installer neu generieren |
+| **Datenbankfehler** | `python scripts/bootstrap.py` ausführen |
+| **Unbound startet nicht** | `/etc/unbound/unbound.conf.d/pi-hole.conf` prüfen |
 
 ---
 
-## API (Kurzreferenz)
+## 🧯 Sicherheitshinweise
 
-| Methode | Pfad       | Query         | Header               | Beispielantwort                                                 |
-| ------: | ---------- | ------------- | -------------------- | --------------------------------------------------------------- |
-|     GET | `/health`  | —             | optional `X-API-Key` | `{"ok": true}`                                                  |
-|     GET | `/dns`     | `limit` (int) | optional `X-API-Key` | Liste von Objekten (`timestamp`, `client`, `query`, `action`)   |
-|     GET | `/leases`  | —             | optional `X-API-Key` | Liste mit (`ip`, `mac`, `hostname`, `lease_start`, `lease_end`) |
-|     GET | `/devices` | —             | optional `X-API-Key` | Liste mit (`ip`, `mac`, `hostname`, `last_seen`)                |
+### 🔐 API-Sicherheit
+- **API-Keys** werden automatisch generiert (16-Byte Hex)
+- **CORS** nur für localhost aktiviert
+- **Authentifizierung** für alle Endpunkte erforderlich
 
----
+### 🛡️ Systemd-Hardening
+- **NoNewPrivileges** verhindert Rechte-Eskalation
+- **ProtectSystem=strict** Schreibschutz für Dateisystem
+- **PrivateTmp** isolierte temporäre Verzeichnisse
+- **Memory-Limits** verhindern Ressourcen-Erschöpfung
 
-## Datenbank
-
-Tabellen (vereinfacht):
-
-* `dns_logs(id, timestamp, client, query, action)` — Index auf `timestamp`
-* `ip_leases(id, ip UNIQUE, mac, hostname, lease_start, lease_end)`
-* `devices(id, ip, mac, hostname, last_seen)` — Index auf `ip`
-
-Schema wird beim API-Start erzeugt (siehe `api/main.py` → `init_db()`).
+### 🔒 Netzwerk-Sicherheit
+- **Unbound** nur auf localhost (nicht exponiert)
+- **DNS über TLS** zu Upstream-Resolvern
+- **DNSSEC**-Validierung aktiviert
 
 ---
 
-## Optionale Worker
+## 🤝 Mitwirken
 
-* **DNS-Monitor** (`pyhole/dns_monitor.py`):
-  Liest `/var/log/pihole.log` periodisch und schreibt Treffer in `dns_logs`. Parser ist bewusst einfach gehalten.
-* **Allocator** (`pyalloc/*`):
-  Skelett für IP-Adressvergabe; keine DHCP-Integration vorhanden.
-
----
-
-## Troubleshooting
-
-| Problem                    | Ursache / Lösung                                                          |
-| -------------------------- | ------------------------------------------------------------------------- |
-| `no such table` in SQLite  | API einmal starten (init), oder `init_db()` manuell ausführen.            |
-| `401 Invalid API key`      | `X-API-Key`-Header korrekt setzen (falls `SUITE_API_KEY` aktiv).          |
-| Leere `/dns`-Ergebnisse    | Daten seeden oder DNS-Monitor laufen lassen; Pfad zum Pi-hole-Log prüfen. |
-| `/health` nicht erreichbar | Prozess/Port prüfen; `uvicorn`-Logs ansehen.                              |
+1. **Repository forken**
+2. **Feature-Branch erstellen**: `git checkout -b feature/tolles-feature`
+3. **Änderungen committen**: `git commit -m 'feat: tolles Feature hinzugefügt'`
+4. **Testen mit**: `ruff check . && pytest`
+5. **Push** und Pull Request erstellen
 
 ---
 
-## Systemd (optional)
+## 📜 Lizenz
 
-Nur wenn gewünscht; Pfade/Benutzer anpassen:
-
-```ini
-[Unit]
-Description=Pi-hole Suite (API + workers)
-After=network.target
-
-[Service]
-WorkingDirectory=/home/<USER>/github_repos/Pi-hole-Unbound-PiAlert-Setup
-Environment=SUITE_API_KEY=testkey
-ExecStart=/home/<USER>/github_repos/Pi-hole-Unbound-PiAlert-Setup/.venv/bin/python start_suite.py
-Restart=always
-User=<USER>
-
-[Install]
-WantedBy=multi-user.target
-```
+Dieses Projekt ist unter der **MIT-Lizenz** lizenziert - siehe [LICENSE](LICENSE)-Datei.
 
 ---
 
-## Changelog & Lizenz
+## 📈 Changelog
 
-* Änderungen: **[CHANGELOG.md](CHANGELOG.md)**
-* Lizenz: **MIT** (**[LICENSE](LICENSE)**)
+Siehe [CHANGELOG.md](CHANGELOG.md) für Versionshistorie und Updates.
+
+---
+
+<div align="center">
+
+**Mit ❤️ für die Pi-hole-Community erstellt**
+
+[🐛 Bug melden](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/issues) •
+[✨ Feature anfordern](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/issues) •
+[💬 Diskussionen](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/discussions)
+
+</div>

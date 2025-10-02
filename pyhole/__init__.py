@@ -1,0 +1,1 @@
+"""Pi-hole monitoring components."""
