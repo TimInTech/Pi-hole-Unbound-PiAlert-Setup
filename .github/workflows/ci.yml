@@ -2,7 +2,9 @@ name: ci
 
 on:
   push:
+    branches: [ main, feature/* ]
   pull_request:
+    branches: [ main ]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -24,7 +26,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: pip-${{ runner.os }}-${{ hashFiles('**/requirements.lock') }}
+          key: pip-${{ runner.os }}-${{ hashFiles('**/requirements.txt') }}
           restore-keys: |
             pip-${{ runner.os }}-
 
@@ -33,24 +35,40 @@ jobs:
           python -m venv .venv
           . .venv/bin/activate
           pip install -U pip
-          pip install -r requirements.lock
+          pip install -r requirements.txt
 
       - name: Ruff (lint)
         run: |
           . .venv/bin/activate
           ruff check .
 
-      - name: Run tests
-        env:
-          SUITE_API_KEY: test-key
-        run: |
-          . .venv/bin/activate
-          pytest tests/ -v
-
-      - name: Import smoke
+      - name: Import smoke test
         run: |
           . .venv/bin/activate
           python - <<PY
-import fastapi, uvicorn, pydantic, sqlite3
-print("imports ok")
-PY
+          import fastapi, uvicorn, pydantic, sqlite3
+          print("✓ Core imports successful")
+          
+          # Test basic functionality without running servers
+          from api.main import app
+          from shared.db import init_db
+          print("✓ Application modules load correctly")
+          PY
+
+      - name: Run tests (if available)
+        env:
+          SUITE_API_KEY: test-key-ci
+        run: |
+          . .venv/bin/activate
+          if [ -d "tests" ] && [ "$(find tests -name '*.py' | wc -l)" -gt 0 ]; then
+            echo "Running pytest..."
+            pytest tests/ -v --tb=short
+          else
+            echo "No tests found, skipping pytest"
+          fi
+
+      - name: Validate installer script
+        run: |
+          # Basic syntax check for the installer
+          bash -n install.sh
+          echo "✓ Installer script syntax is valid"

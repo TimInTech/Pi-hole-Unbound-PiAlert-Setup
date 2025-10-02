@@ -1,6 +1,5 @@
 """Simple Pi-hole log tailer with log rotation support."""
 import logging
-import os
 import threading
 import time
 from pathlib import Path
