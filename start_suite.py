@@ -7,9 +7,14 @@ import threading
 import uvicorn
 
 from api.main import app as api_app
-from pyalloc.main import start as alloc_start
 from pyhole.dns_monitor import start as dns_start
 from shared.db import init_db
+
+# Optional demo component - disabled by default for one-click installer
+ENABLE_PYALLOC_DEMO = os.getenv("ENABLE_PYALLOC_DEMO", "false").lower() == "true"
+
+if ENABLE_PYALLOC_DEMO:
+    from pyalloc.main import start as alloc_start
 
 
 async def run_api() -> None:
@@ -21,9 +26,19 @@ async def run_api() -> None:
 def main() -> None:
     if not os.environ.get("SUITE_API_KEY"):
         raise ValueError("SUITE_API_KEY environment variable must be set")
+    
     conn = init_db()
+    
+    # Start core DNS monitoring
     threading.Thread(target=dns_start, args=(conn,), daemon=True).start()
-    threading.Thread(target=alloc_start, args=(conn,), daemon=True).start()
+    
+    # Start optional demo allocator if enabled
+    if ENABLE_PYALLOC_DEMO:
+        threading.Thread(target=alloc_start, args=(conn,), daemon=True).start()
+        print("✓ Started with pyalloc demo component")
+    else:
+        print("✓ Started in production mode (pyalloc demo disabled)")
+    
     try:
         asyncio.run(run_api())
     except KeyboardInterrupt:
