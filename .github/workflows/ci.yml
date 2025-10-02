@@ -99,7 +99,3 @@ jobs:
             echo "❌ Installer script is not executable"
             exit 1
           fi
-=======
-
-
->>>>>>> origin/main
