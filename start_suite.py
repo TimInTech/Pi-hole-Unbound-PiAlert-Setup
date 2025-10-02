@@ -6,7 +6,6 @@ import logging
 import os
 import threading
 import sys
-from pathlib import Path
 
 import uvicorn
 

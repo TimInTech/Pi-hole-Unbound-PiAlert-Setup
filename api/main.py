@@ -69,10 +69,15 @@ def require_api_key(x_api_key: Optional[str] = Header(None)) -> None:
             status_code=500, 
             detail="API key not configured on server"
         )
-    if not x_api_key or x_api_key != api_key:
+    if not x_api_key:
         raise HTTPException(
             status_code=401, 
-            detail="Invalid or missing API key"
+            detail="Missing API key header"
+        )
+    if x_api_key != api_key:
+        raise HTTPException(
+            status_code=401, 
+            detail="Invalid API key"
         )
 
 

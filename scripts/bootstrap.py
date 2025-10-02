@@ -3,7 +3,6 @@
 
 import importlib.util
 import sys
-from pathlib import Path
 
 
 def check_dependency(module_name: str) -> bool:
@@ -39,7 +38,6 @@ def main():
     # Check if we can import our modules
     try:
         from shared.db import init_db
-        from api.main import app
         print("✓ Internal modules")
     except ImportError as e:
         print(f"✗ Internal module import failed: {e}")

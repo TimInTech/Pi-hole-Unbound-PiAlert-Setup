@@ -2,7 +2,6 @@
 
 import logging
 import sqlite3
-from pathlib import Path
 
 from .shared_config import DB_PATH
 

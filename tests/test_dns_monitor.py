@@ -1,6 +1,5 @@
 """Tests for DNS log parsing functionality."""
 
-import pytest
 from pyhole.dns_monitor import parse_pihole_line
 
 

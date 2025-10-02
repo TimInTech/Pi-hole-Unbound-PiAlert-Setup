@@ -2,22 +2,29 @@
 
 import os
 import tempfile
-import sqlite3
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
-# Set test environment
+# Set test environment before importing
 os.environ['SUITE_API_KEY'] = 'test-api-key'
 os.environ['SUITE_DATA_DIR'] = tempfile.mkdtemp()
 
 from api.main import app
+from shared.db import init_db
+
+
+@pytest.fixture(scope="module") 
+def setup_database():
+    """Initialize test database once for all tests."""
+    init_db()
+    yield
+    # Cleanup would happen here if needed
 
 
 @pytest.fixture
-def client():
-    """Create test client."""
+def client(setup_database):
+    """Create test client with initialized database."""
     return TestClient(app)
 
 
@@ -39,7 +46,7 @@ def test_health_endpoint(client, api_headers):
 def test_health_endpoint_no_auth(client):
     """Test health endpoint without authentication."""
     response = client.get("/health")
-    assert response.status_code == 422  # Missing required header
+    assert response.status_code == 401  # API key validation returns 401
 
 
 def test_health_endpoint_bad_auth(client):
@@ -86,6 +93,9 @@ def test_stats_endpoint(client, api_headers):
     assert "total_dns_logs" in data
     assert "total_devices" in data
     assert "recent_queries" in data
+    assert isinstance(data["total_dns_logs"], int)
+    assert isinstance(data["total_devices"], int)
+    assert isinstance(data["recent_queries"], int)
 
 
 def test_root_endpoint(client):
