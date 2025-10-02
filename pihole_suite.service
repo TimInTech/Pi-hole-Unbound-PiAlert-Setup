@@ -1,0 +1,13 @@
+[Unit]
+Description=Pi-hole Suite (API + workers)
+After=network.target
+
+[Service]
+WorkingDirectory=/home/gummi/github_repos/Pi-hole-Unbound-PiAlert-Setup
+Environment=SUITE_API_KEY=testkey
+ExecStart=/home/gummi/github_repos/Pi-hole-Unbound-PiAlert-Setup/.venv/bin/python start_suite.py
+Restart=always
+User=gummi
+
+[Install]
+WantedBy=multi-user.target
