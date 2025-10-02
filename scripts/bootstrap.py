@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+<<<<<<< HEAD
 """Bootstrap script to check dependencies and initialize the suite."""
 
 import importlib.util
@@ -58,3 +59,29 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+=======
+"""Check suite dependencies."""
+import importlib.util
+import sys
+
+REQUIRED = [
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+    "sqlite3",
+    "ipaddress",
+]
+
+
+def main() -> None:
+    missing = [mod for mod in REQUIRED if importlib.util.find_spec(mod) is None]
+    if missing:
+        print("Missing: " + ", ".join(missing))
+        print("Run: pip install -r requirements.txt")
+        sys.exit(1)
+    print("Dependencies OK")
+
+
+if __name__ == "__main__":
+    main()
+>>>>>>> origin/main

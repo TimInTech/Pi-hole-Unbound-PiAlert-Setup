@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 <div align="center">
 
 # 🛡️ Pi-hole + Unbound + NetAlertX
@@ -250,3 +251,12 @@ Siehe [CHANGELOG.md](CHANGELOG.md) für Versionshistorie und Updates.
 [💬 Diskussionen](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/discussions)
 
 </div>
+=======
+# Pi-hole + Unbound + NetAlertX — Ein-Klick-Setup
+
+
+
+- **Issues**: [GitHub Issues](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/issues)
+- **Diskussionen**: [GitHub Discussions](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/discussions)
+- **Dokumentation**: Diese README und Inline-Code-Kommentare
+>>>>>>> origin/main
