@@ -1,0 +1,20 @@
+# IDE/OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Python
+
+# Env
+.env
+.env.*
+*.bak
+*.swp
+*.tmp
+# OS / Python
+.DS_Store
+__pycache__/
+*.pyc
+data/
+*.sqlite

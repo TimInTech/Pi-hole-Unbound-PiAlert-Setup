@@ -1,0 +1,61 @@
+[Unit]
+Description=Pi-hole Suite (API + DNS monitoring)
+Documentation=https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup
+After=network.target pihole-FTL.service
+Wants=pihole-FTL.service
+
+[Service]
+Type=simple
+User=pihole-suite
+Group=pihole-suite
+WorkingDirectory=/opt/pihole-suite
+EnvironmentFile=/opt/pihole-suite/.env
+ExecStart=/opt/pihole-suite/.venv/bin/python start_suite.py
+ExecReload=/bin/kill -HUP $MAINPID
+
+# Restart policy
+Restart=always
+RestartSec=3
+StartLimitInterval=60
+StartLimitBurst=3
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/pihole-suite/data
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectHostname=yes
+ProtectClock=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RemoveIPC=yes
+MemoryDenyWriteExecute=yes
+
+# Namespace isolation
+PrivateNetwork=no
+PrivateUsers=no
+ProtectKernelLogs=yes
+ProtectProc=invisible
+ProcSubset=pid
+
+# Capabilities
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# System call filtering
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@debug @mount @cpu-emulation @obsolete @privileged @reboot @swap
+
+# Resource limits
+LimitNOFILE=65536
+MemoryHigh=256M
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

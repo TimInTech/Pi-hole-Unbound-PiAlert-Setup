@@ -1,0 +1,173 @@
+diff a/start_suite.py b/start_suite.py	(rejected hunks)
+@@ -1,109 +1,76 @@
+ #!/usr/bin/env python3
+-"""Entry point for the Pi-hole monitoring suite."""
+-
+-import asyncio
+-import logging
++"""
++Pi-hole Security Suite API
++FastAPI application for monitoring and managing the Pi-hole security stack
++"""
+ import os
+-import threading
+-import sys
+-
+ import uvicorn
+-
+-# Setup logging
+-logging.basicConfig(
+-    level=os.getenv("SUITE_LOG_LEVEL", "INFO"),
+-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
++from fastapi import FastAPI, HTTPException, Depends, Header
++from typing import Optional
++import subprocess
++import json
++
++app = FastAPI(
++    title="Pi-hole Security Suite API",
++    description="API for monitoring and managing Pi-hole + Unbound + NetAlertX",
++    version="1.0.0"
+ )
+-logger = logging.getLogger(__name__)
+ 
+-# Import application components
+-try:
+-    from api.main import app as api_app
+-    from pyhole.dns_monitor import start as dns_start
+-    from shared.db import init_db
+-except ImportError as e:
+-    logger.error(f"Failed to import required modules: {e}")
+-    logger.error("Make sure you've installed dependencies: pip install -r requirements.txt")
+-    sys.exit(1)
+-
+-# Optional demo component - disabled by default
+-ENABLE_PYALLOC_DEMO = os.getenv("ENABLE_PYALLOC_DEMO", "false").lower() == "true"
+-if ENABLE_PYALLOC_DEMO:
+-    try:
+-        from pyalloc.main import start as alloc_start
+-        logger.info("PyAlloc demo component enabled")
+-    except ImportError:
+-        logger.warning("PyAlloc demo component not available")
+-        ENABLE_PYALLOC_DEMO = False
++API_KEY = os.getenv("SUITE_API_KEY", "")
+ 
++def get_api_key(x_api_key: Optional[str] = Header(None)) -> str:
++    """Validate API key from header"""
++    if not API_KEY or x_api_key != API_KEY:
++        raise HTTPException(status_code=401, detail="Invalid or missing API key")
++    return x_api_key
+ 
+-async def run_api() -> None:
+-    """Run the FastAPI application."""
+-    port = int(os.getenv("SUITE_PORT", "8090"))
+-    host = os.getenv("SUITE_HOST", "127.0.0.1")
++@app.get("/health")
++def health():
++    """Health check endpoint - no auth required"""
++    return {"status": "ok", "api": "running", "version": "1.0.0"}
+ 
+-    config = uvicorn.Config(api_app, host=host, port=port, log_level="info", access_log=True)
+-    server = uvicorn.Server(config)
+-    await server.serve()
+-
+-
+-def main() -> None:
+-    """Main application entry point."""
+-    logger.info("Starting Pi-hole Suite...")
+-
+-    # Verify API key
+-    api_key = os.environ.get("SUITE_API_KEY")
+-    if not api_key:
+-        logger.error("SUITE_API_KEY environment variable must be set")
+-        logger.info("Generate one with: openssl rand -hex 16")
+-        sys.exit(1)
+-
+-    # Initialize database
++@app.get("/info")
++def info(api_key: str = Depends(get_api_key)):
++    """Get system information - requires API key"""
+     try:
+-        conn = init_db()
+-        logger.info("Database initialized successfully")
+-    except Exception as e:
+-        logger.error(f"Failed to initialize database: {e}")
+-        sys.exit(1)
+-
+-    # Start core DNS monitoring
+-    try:
+-        dns_thread = threading.Thread(
+-            target=dns_start,
+-            args=(conn,),
+-            daemon=True,
+-            name="DNSMonitor",
+-        )
+-        dns_thread.start()
+-        logger.info("DNS monitor started")
+-    except Exception as e:
+-        logger.error(f"Failed to start DNS monitor: {e}")
+-
+-    # Start optional demo allocator if enabled
+-    if ENABLE_PYALLOC_DEMO:
++        # Check service statuses
++        services = {}
++        for service in ["unbound", "pihole-FTL", "pihole-suite"]:
++            try:
++                result = subprocess.run(
++                    ["systemctl", "is-active", service],
++                    capture_output=True, text=True, check=False
++                )
++                services[service] = result.stdout.strip()
++            except Exception:
++                services[service] = "unknown"
++        
++        # Check Docker containers
++        containers = {}
+         try:
+-            alloc_thread = threading.Thread(
+-                target=alloc_start,
+-                args=(conn,),
+-                daemon=True,
+-                name="AllocDemo",
++            result = subprocess.run(
++                ["docker", "ps", "--format", "json"],
++                capture_output=True, text=True, check=False
+             )
+-            alloc_thread.start()
+-            logger.info("PyAlloc demo component started")
+-        except Exception as e:
+-            logger.warning(f"Failed to start PyAlloc demo: {e}")
+-
+-    logger.info(f"API Key: {api_key[:8]}...")
+-    logger.info("Starting API server...")
+-
+-    try:
+-        asyncio.run(run_api())
+-    except KeyboardInterrupt:
+-        logger.info("Shutting down...")
++            if result.returncode == 0:
++                for line in result.stdout.strip().split('\n'):
++                    if line:
++                        container = json.loads(line)
++                        containers[container.get('Names', 'unknown')] = container.get('State', 'unknown')
++        except Exception:
++            containers = {"error": "docker_unavailable"}
++        
++        return {
++            "services": services,
++            "containers": containers,
++            "api_key_configured": bool(API_KEY)
++        }
+     except Exception as e:
+-        logger.error(f"Application error: {e}")
+-        sys.exit(1)
+-
++        raise HTTPException(status_code=500, detail=f"Error getting system info: {str(e)}")
+ 
+ if __name__ == "__main__":
+-    main()
++    port = int(os.getenv("SUITE_PORT", "8090"))
++    print(f"Starting Pi-hole Security Suite API on port {port}")
++    print(f"API Key configured: {'Yes' if API_KEY else 'No'}")
++    uvicorn.run(app, host="127.0.0.1", port=port)
++
