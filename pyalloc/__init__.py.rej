@@ -1,5 +1,0 @@
-diff a/pyalloc/__init__.py b/pyalloc/__init__.py	(rejected hunks)
-@@ -1,2 +1 @@
--"""Demo IP allocator - Not required for main functionality."""
--"""IP allocation helpers."""
-+from .allocator import IPPool
