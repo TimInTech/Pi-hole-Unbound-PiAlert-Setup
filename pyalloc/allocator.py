@@ -36,10 +36,10 @@ class IPPool:
                 ip_str = str(ip)
                 if ip_str not in self.allocated:
                     self.allocated.add(ip_str)
-                    logger.info(f"Allocated IP: {ip_str}")
+                    logger.info("Allocated IP %s", ip_str)
                     return ip_str
-            
-            raise RuntimeError(f"No free IP addresses in {self.network}")
+
+            raise RuntimeError("No free IP addresses")
     
     def release(self, ip: str) -> bool:
         """Release an allocated IP address.
