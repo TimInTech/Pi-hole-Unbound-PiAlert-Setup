@@ -56,6 +56,7 @@ def info(api_key: str = Depends(get_api_key)):
         # Check Docker containers (if docker available)
         containers = {}
         try:
+            # Use docker ps --format '{{json .}}' to get json lines if docker is available
             result = subprocess.run(
                 ["docker", "ps", "--format", "{{json .}}"],
                 capture_output=True,
