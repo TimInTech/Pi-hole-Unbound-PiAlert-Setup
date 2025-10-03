@@ -28,7 +28,7 @@ warn()     { echo -e "${YELLOW}[⚠]${NC} $*"; }
 error()    { echo -e "${RED}[✗]${NC} $*"; }
 step()     { echo -e "\n${YELLOW}[STEP]${NC} $*"; }
 
-# 🛡️ Error handler
+# 🛡 Error handler
 trap 'error "Installation failed. See logs above."; exit 1' ERR
 
 # ---------------------------------------------------------------------------
@@ -65,7 +65,7 @@ handle_systemd_resolved() {
         # shellcheck disable=SC1091
         . /etc/os-release
         if [[ "${ID:-}" == ubuntu* || "${ID_LIKE:-}" == *ubuntu* ]]; then
-            if systemctl list-unit-files | grep -q '^systemd-resolved\\.service'; then
+            if systemctl list-unit-files | grep -q '^systemd-resolved\.service'; then
                 if systemctl is-active --quiet systemd-resolved; then
                     warn "systemd-resolved is active; stopping to free port 53"
                     systemctl stop systemd-resolved || true
@@ -129,7 +129,7 @@ configure_unbound() {
     install -d -m 0755 /var/lib/unbound
     curl -fsSL https://www.internic.net/domain/named.root -o /var/lib/unbound/root.hints
 
-    cat > /etc/unbound/unbound.conf.d/pi-hole.conf <<'UNBOUND_EOF'
+    cat > /etc/unbound/unbound.conf.d/pi-hole.conf <<EOF
 server:
     interface: 127.0.0.1
     port: $UNBOUND_PORT
@@ -154,7 +154,7 @@ forward-zone:
     forward-addr: 9.9.9.9@853#dns.quad9.net
     forward-addr: 149.112.112.112@853#dns.quad9.net
 # NOTE: This is DoT forwarding to Quad9 (not full recursion to the root); intended.
-UNBOUND_EOF
+EOF
 
     unbound-anchor -a /var/lib/unbound/root.key || true
     systemctl enable --now unbound
@@ -290,3 +290,8 @@ main() {
     show_summary
 }
 main "$@"
+SCRIPT
+
+# Syntax prüfen & ausführen
+sudo bash -n install.sh && echo "Syntax OK"
+sudo ./install.sh
