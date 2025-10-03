@@ -4,10 +4,6 @@ import ipaddress
 import logging
 import threading
 from typing import Set
-"""Simple IP pool allocator."""
-import ipaddress
-import logging
-import threading
 
 logger = logging.getLogger(__name__)
 
@@ -31,16 +27,10 @@ class IPPool:
         
         Returns:
             String IP address
-            
+        
         Raises:
             RuntimeError: If no IPs available
         """
-    def __init__(self, network: str):
-        self.network = ipaddress.ip_network(network)
-        self.lock = threading.Lock()
-        self.allocated = set()
-
-    def allocate(self) -> str:
         with self.lock:
             for ip in self.network.hosts():
                 ip_str = str(ip)
@@ -95,12 +85,3 @@ class IPPool:
                 "available": total_hosts - allocated_count,
                 "utilization_percent": (allocated_count / total_hosts) * 100 if total_hosts > 0 else 0
             }
-                    logger.info("Allocated IP %s", ip_str)
-                    return ip_str
-            raise RuntimeError("No free IP addresses")
-
-    def release(self, ip: str) -> None:
-        with self.lock:
-            if ip in self.allocated:
-                self.allocated.remove(ip)
-                logger.info("Released IP %s", ip)
