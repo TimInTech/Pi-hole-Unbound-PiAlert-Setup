@@ -1,0 +1,279 @@
+# 🛡️ Pi-hole Security Suite (Ein-Klick-Installer)
+
+Ein umfassender, produktionsreifer Installer für einen kompletten DNS-Sicherheitsstack:
+- **🔒 Unbound** - Rekursiver DNS-Resolver mit DNS-over-TLS (DoT) zu Quad9
+- **🚫 Pi-hole** - Netzwerkweiter Werbeblocker und DNS-Sinkhole
+- **📡 NetAlertX** - Netzwerkgeräteerkennung und -überwachung  
+- **⚡ Python API Suite** - FastAPI-basierte Überwachungs- und Verwaltungsschnittstelle
+
+## ⚡ Schnellstart
+
+### Standard-Installation (Empfohlen)
+```bash
+git clone https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup.git
+cd Pi-hole-Unbound-PiAlert-Setup
+chmod +x install.sh
+sudo ./install.sh
+```
+
+### Container-Modus (Pi-hole in Docker)
+```bash
+sudo ./install.sh --container-mode
+```
+
+### Erweiterte Optionen
+```bash
+# Unterbrochene Installation fortsetzen
+sudo ./install.sh --resume
+
+# Neuinstallation erzwingen (alle Zustände zurücksetzen)
+sudo ./install.sh --force
+
+# Testlauf (Aktionen vorschau ohne Ausführung)
+sudo ./install.sh --dry-run
+
+# Docker-Konflikte automatisch entfernen
+sudo ./install.sh --auto-remove-conflicts
+```
+
+## 🚀 Installations-Flags
+
+| Flag | Beschreibung |
+|------|--------------|
+| `--container-mode` | Pi-hole in Docker mit Host-Netzwerk; NetAlertX in Docker |
+| `--resume` | Installation vom letzten erfolgreichen Checkpoint fortsetzen |
+| `--force` | Installationsstatus zurücksetzen und alle Komponenten neu installieren |
+| `--dry-run` | Installationsschritte vorschau ohne Änderungen |
+| `--auto-remove-conflicts` | Konfliktverursachende Docker-Pakete automatisch entfernen |
+
+## 🏗️ Architektur
+
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Client DNS    │───▶│    Pi-hole      │───▶│    Unbound      │
+│   :53           │    │   :53/:8053     │    │     :5335       │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+                                                       │
+                                                       ▼
+                                              ┌─────────────────┐
+                                              │   Quad9 DoT     │
+                                              │   :853          │
+                                              └─────────────────┘
+
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   NetAlertX     │    │  Python API     │    │ Verwaltungs-    │
+│   :20211        │    │    :8090        │    │ schnittstelle   │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+```
+
+## 📋 Was wird installiert
+
+### Core DNS-Stack
+- **Unbound**: Rekursiver DNS-Resolver auf `127.0.0.1:5335`
+  - DNS-over-TLS (DoT) zu Quad9 (9.9.9.9) und Cloudflare (1.1.1.1)
+  - DNSSEC-Validierung mit Vertrauensankern
+  - Root-Hints für autoritative Auflösung
+  - Datenschutzfokussierte Konfiguration
+
+- **Pi-hole**: DNS-Sinkhole und Werbeblocker
+  - **Host-Modus**: Nativer systemd-Service auf Port 53
+  - **Container-Modus**: Docker-Container mit Host-Netzwerk
+  - Konfiguriert zur Nutzung von Unbound als Upstream-DNS
+  - Web-Admin-Interface mit generiertem Passwort
+
+### Netzwerküberwachung
+- **NetAlertX**: Netzwerkgeräte-Erkennung und Benachrichtigungen
+  - Docker-Container auf Port 20211
+  - Persistente Konfigurations- und Datenbankspeicherung
+  - Echtzeit-Netzwerkscan und Alarme
+
+### Verwaltungs-API
+- **Python Suite**: FastAPI-basierte Verwaltungsschnittstelle
+  - Gesundheitsüberwachungs-Endpunkte
+  - Service-Status-Berichterstattung
+  - API-Schlüssel-Authentifizierung
+  - Systemd-Service (Host-Modus) oder Vordergrundprozess (Container-Modus)
+
+## 🔧 Konfigurationsdetails
+
+### DNS-Auflösungskette
+1. **Client** → Pi-hole (:53) → Filtert Werbung/Malware
+2. **Pi-hole** → Unbound (:5335) → Rekursive Auflösung
+3. **Unbound** → Quad9 DoT (:853) → Verschlüsselte Upstream-Anfragen
+
+### Sicherheitsfeatures
+- DNS-over-TLS-Verschlüsselung für Upstream-Anfragen
+- DNSSEC-Validierung für DNS-Integrität
+- Werbe- und Malware-Blockierung via Pi-hole-Blocklisten
+- Netzwerkgeräte-Überwachung und Benachrichtigungen
+- API-Authentifizierung mit generierten Schlüsseln
+
+### Persistenz & Wiederherstellung
+- Zustandsbasierte Installation mit Checkpoint-Wiederherstellung
+- Automatische Service-Neustart-Konfiguration
+- Persistente Datenvolumes für Container
+- Backup der ursprünglichen System-DNS-Konfiguration
+
+## 🧪 Fehlerbehebung
+
+### Port-Konflikte
+Der Installer prüft Port-Konflikte vor der Installation:
+- **Port 53**: DNS (Pi-hole)
+- **Port 5335**: Unbound rekursives DNS
+- **Port 20211**: NetAlertX Web-Interface
+- **Port 8090**: Python API Suite
+
+### systemd-resolved (Ubuntu/Debian)
+Auf Ubuntu-Systemen wird `systemd-resolved` automatisch deaktiviert, um Port 53 freizugeben:
+```bash
+sudo systemctl stop systemd-resolved
+sudo systemctl disable systemd-resolved
+```
+
+**Ursprüngliches DNS-Verhalten wiederherstellen:**
+```bash
+sudo mv /etc/resolv.conf.bak /etc/resolv.conf
+sudo systemctl enable --now systemd-resolved
+```
+
+### Service-Gesundheitsprüfungen
+```bash
+# Alle Services prüfen
+./check.sh
+
+# Einzelne Service-Prüfungen
+systemctl status unbound pihole-FTL pihole-suite
+
+# Container-Status
+docker ps
+docker logs pihole
+docker logs netalertx
+
+# DNS-Auflösungstests
+dig @127.0.0.1 -p 5335 example.com +short  # Unbound testen
+dig @127.0.0.1 google.com +short            # Pi-hole testen
+```
+
+### Protokolldateien
+- **Installation**: `./install.log` und `./install_errors.log`
+- **Unbound**: `journalctl -u unbound`
+- **Pi-hole**: `journalctl -u pihole-FTL`
+- **Python Suite**: `journalctl -u pihole-suite`
+- **Container**: `docker logs [container_name]`
+
+### Häufige Probleme
+
+#### Docker-Berechtigungsfehler
+```bash
+sudo usermod -aG docker $USER
+newgrp docker  # Oder abmelden/anmelden
+```
+
+#### DNS-Auflösungsfehler
+```bash
+# Unbound-Konfiguration prüfen
+sudo unbound-checkconf
+
+# Vertrauensanker verifizieren
+sudo unbound-anchor -v
+
+# Upstream-Konnektivität testen
+dig @9.9.9.9 example.com +short
+```
+
+#### Pi-hole Admin-Zugang
+```bash
+# Generiertes Passwort abrufen (Container-Modus)
+sudo docker logs pihole 2>&1 | grep "password:"
+
+# Passwort zurücksetzen (Host-Modus)
+sudo pihole -a -p
+```
+
+## 🔍 API-Nutzung
+
+Die Python Suite bietet eine REST-API für Überwachung und Verwaltung:
+
+```bash
+# API-Schlüssel abrufen
+API_KEY=$(grep SUITE_API_KEY .env | cut -d= -f2)
+
+# Gesundheitsprüfung (keine Authentifizierung erforderlich)
+curl http://127.0.0.1:8090/health
+
+# Systeminformationen (API-Schlüssel erforderlich)
+curl -H "X-API-Key: $API_KEY" http://127.0.0.1:8090/info
+```
+
+## 📊 Leistung & Überwachung
+
+### DNS-Leistung
+- **Unbound**: ~1-5ms lokale Cache-Treffer
+- **Pi-hole**: ~10-50ms mit Filterung
+- **Kalte Anfragen**: ~100-500ms (DoT zu Quad9)
+
+### Ressourcenverbrauch
+- **Unbound**: ~50MB RAM
+- **Pi-hole**: ~100-200MB RAM
+- **NetAlertX**: ~100-150MB RAM
+- **Python Suite**: ~20-50MB RAM
+
+### Überwachungs-Endpunkte
+- **Pi-hole Admin**: `http://[IHRE_IP]/admin/`
+- **NetAlertX**: `http://[IHRE_IP]:20211/`
+- **API Gesundheit**: `http://127.0.0.1:8090/health`
+- **API Docs**: `http://127.0.0.1:8090/docs`
+
+## 🛠️ Entwicklung
+
+### Testen
+```bash
+# Alle Tests ausführen
+./check.sh
+
+# Nur Python-Tests
+python3 -m pytest tests/ -v
+
+# Code prüfen
+ruff check . --fix
+```
+
+### Manuelle Installationsschritte
+```bash
+# 1. Pakete installieren
+sudo apt update && sudo apt install -y unbound pihole docker.io python3-venv
+
+# 2. Unbound konfigurieren
+sudo systemctl enable --now unbound
+
+# 3. Pi-hole installieren
+curl -sSL https://install.pi-hole.net | bash
+
+# 4. Container einrichten
+sudo docker run -d --name netalertx -p 20211:20211 jokobsk/netalertx:latest
+
+# 5. Python-Suite starten
+python3 -m venv venv
+./venv/bin/pip install -r requirements.txt
+./venv/bin/python start_suite.py
+```
+
+## 📝 Lizenz
+
+Dieses Projekt ist unter der MIT-Lizenz lizenziert - siehe die [LICENSE](LICENSE)-Datei für Details.
+
+## 🤝 Mitwirken
+
+1. Repository forken
+2. Feature-Branch erstellen (`git checkout -b feature/verbesserung`)
+3. Änderungen testen (`./check.sh`)
+4. Änderungen committen (`git commit -am 'Verbesserung hinzufügen'`)
+5. Auf Branch pushen (`git push origin feature/verbesserung`)
+6. Pull Request erstellen
+
+## 🔗 Verwandte Projekte
+
+- [Pi-hole](https://pi-hole.net/) - Netzwerkweite Werbeblockierung
+- [Unbound](https://nlnetlabs.nl/projects/unbound/) - Rekursiver DNS-Resolver
+- [NetAlertX](https://github.com/jokob-sk/NetAlertX) - Netzwerküberwachung
+- [FastAPI](https://fastapi.tiangolo.com/) - Modernes Python-Web-Framework

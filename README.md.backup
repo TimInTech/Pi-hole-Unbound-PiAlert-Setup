@@ -1,0 +1,279 @@
+# 🛡️ Pi-hole Security Suite (One-Click Installer)
+
+A comprehensive, production-ready installer for a complete DNS security stack:
+- **🔒 Unbound** - Recursive DNS resolver with DNS-over-TLS (DoT) to Quad9
+- **🚫 Pi-hole** - Network-wide ad blocker and DNS sinkhole  
+- **📡 NetAlertX** - Network device discovery and monitoring
+- **⚡ Python API Suite** - FastAPI-based monitoring and management interface
+
+## ⚡ Quick Start
+
+### Standard Installation (Recommended)
+```bash
+git clone https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup.git
+cd Pi-hole-Unbound-PiAlert-Setup
+chmod +x install.sh
+sudo ./install.sh
+```
+
+### Container Mode (Pi-hole in Docker)
+```bash
+sudo ./install.sh --container-mode
+```
+
+### Advanced Options
+```bash
+# Resume interrupted installation
+sudo ./install.sh --resume
+
+# Force reinstallation (reset all state)
+sudo ./install.sh --force
+
+# Dry run (preview actions without execution)
+sudo ./install.sh --dry-run
+
+# Auto-remove Docker conflicts
+sudo ./install.sh --auto-remove-conflicts
+```
+
+## 🚀 Installation Flags
+
+| Flag | Description |
+|------|-------------|
+| `--container-mode` | Run Pi-hole in Docker with host networking; NetAlertX in Docker |
+| `--resume` | Continue installation from last successful checkpoint |
+| `--force` | Reset installation state and reinstall all components |
+| `--dry-run` | Preview installation steps without making changes |
+| `--auto-remove-conflicts` | Automatically remove conflicting Docker packages |
+
+## 🏗️ Architecture
+
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Client DNS    │───▶│    Pi-hole      │───▶│    Unbound      │
+│   :53           │    │   :53/:8053     │    │     :5335       │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+                                                       │
+                                                       ▼
+                                              ┌─────────────────┐
+                                              │   Quad9 DoT     │
+                                              │   :853          │
+                                              └─────────────────┘
+
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   NetAlertX     │    │  Python API     │    │   Management    │
+│   :20211        │    │    :8090        │    │   Interface     │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+```
+
+## 📋 What Gets Installed
+
+### Core DNS Stack
+- **Unbound**: Recursive DNS resolver on `127.0.0.1:5335`
+  - DNS-over-TLS (DoT) to Quad9 (9.9.9.9) and Cloudflare (1.1.1.1)
+  - DNSSEC validation with trust anchors
+  - Root hints for authoritative resolution
+  - Privacy-focused configuration
+
+- **Pi-hole**: DNS sinkhole and ad blocker
+  - **Host Mode**: Native systemd service on port 53
+  - **Container Mode**: Docker container with host networking
+  - Configured to use Unbound as upstream DNS
+  - Web admin interface with generated password
+
+### Network Monitoring
+- **NetAlertX**: Network device discovery and alerting
+  - Docker container on port 20211
+  - Persistent configuration and database storage
+  - Real-time network scanning and alerts
+
+### Management API
+- **Python Suite**: FastAPI-based management interface
+  - Health monitoring endpoints
+  - Service status reporting
+  - API key authentication
+  - Systemd service (host mode) or foreground process (container mode)
+
+## 🔧 Configuration Details
+
+### DNS Resolution Chain
+1. **Client** → Pi-hole (:53) → Filters ads/malware
+2. **Pi-hole** → Unbound (:5335) → Recursive resolution
+3. **Unbound** → Quad9 DoT (:853) → Encrypted upstream queries
+
+### Security Features
+- DNS-over-TLS encryption for upstream queries
+- DNSSEC validation for DNS integrity
+- Ad and malware blocking via Pi-hole blocklists
+- Network device monitoring and alerting
+- API authentication with generated keys
+
+### Persistence & Recovery
+- State-based installation with checkpoint recovery
+- Automatic service restart configuration
+- Persistent data volumes for containers
+- Backup of original system DNS configuration
+
+## 🧪 Troubleshooting
+
+### Port Conflicts
+The installer checks for port conflicts before installation:
+- **Port 53**: DNS (Pi-hole)
+- **Port 5335**: Unbound recursive DNS
+- **Port 20211**: NetAlertX web interface
+- **Port 8090**: Python API suite
+
+### systemd-resolved (Ubuntu/Debian)
+On Ubuntu systems, `systemd-resolved` is automatically disabled to free port 53:
+```bash
+sudo systemctl stop systemd-resolved
+sudo systemctl disable systemd-resolved
+```
+
+**To restore original DNS behavior:**
+```bash
+sudo mv /etc/resolv.conf.bak /etc/resolv.conf
+sudo systemctl enable --now systemd-resolved
+```
+
+### Service Health Checks
+```bash
+# Check all services
+./check.sh
+
+# Individual service checks
+systemctl status unbound pihole-FTL pihole-suite
+
+# Container status
+docker ps
+docker logs pihole
+docker logs netalertx
+
+# DNS resolution tests
+dig @127.0.0.1 -p 5335 example.com +short  # Test Unbound
+dig @127.0.0.1 google.com +short            # Test Pi-hole
+```
+
+### Log Files
+- **Installation**: `./install.log` and `./install_errors.log`
+- **Unbound**: `journalctl -u unbound`
+- **Pi-hole**: `journalctl -u pihole-FTL`
+- **Python Suite**: `journalctl -u pihole-suite`
+- **Containers**: `docker logs [container_name]`
+
+### Common Issues
+
+#### Docker Permission Errors
+```bash
+sudo usermod -aG docker $USER
+newgrp docker  # Or logout/login
+```
+
+#### DNS Resolution Failures
+```bash
+# Check Unbound configuration
+sudo unbound-checkconf
+
+# Verify trust anchors
+sudo unbound-anchor -v
+
+# Test upstream connectivity
+dig @9.9.9.9 example.com +short
+```
+
+#### Pi-hole Admin Access
+```bash
+# Get generated password (container mode)
+sudo docker logs pihole 2>&1 | grep "password:"
+
+# Reset password (host mode)
+sudo pihole -a -p
+```
+
+## 🔍 API Usage
+
+The Python Suite provides a REST API for monitoring and management:
+
+```bash
+# Get API key
+API_KEY=$(grep SUITE_API_KEY .env | cut -d= -f2)
+
+# Health check (no auth required)
+curl http://127.0.0.1:8090/health
+
+# System information (requires API key)
+curl -H "X-API-Key: $API_KEY" http://127.0.0.1:8090/info
+```
+
+## 📊 Performance & Monitoring
+
+### DNS Performance
+- **Unbound**: ~1-5ms local cache hits
+- **Pi-hole**: ~10-50ms with filtering
+- **Cold queries**: ~100-500ms (DoT to Quad9)
+
+### Resource Usage
+- **Unbound**: ~50MB RAM
+- **Pi-hole**: ~100-200MB RAM  
+- **NetAlertX**: ~100-150MB RAM
+- **Python Suite**: ~20-50MB RAM
+
+### Monitoring Endpoints
+- **Pi-hole Admin**: `http://[YOUR_IP]/admin/`
+- **NetAlertX**: `http://[YOUR_IP]:20211/`
+- **API Health**: `http://127.0.0.1:8090/health`
+- **API Docs**: `http://127.0.0.1:8090/docs`
+
+## 🛠️ Development
+
+### Testing
+```bash
+# Run all tests
+./check.sh
+
+# Python tests only
+python3 -m pytest tests/ -v
+
+# Lint code
+ruff check . --fix
+```
+
+### Manual Installation Steps
+```bash
+# 1. Install packages
+sudo apt update && sudo apt install -y unbound pihole docker.io python3-venv
+
+# 2. Configure Unbound
+sudo systemctl enable --now unbound
+
+# 3. Install Pi-hole
+curl -sSL https://install.pi-hole.net | bash
+
+# 4. Setup containers
+sudo docker run -d --name netalertx -p 20211:20211 jokobsk/netalertx:latest
+
+# 5. Start Python suite
+python3 -m venv venv
+./venv/bin/pip install -r requirements.txt
+./venv/bin/python start_suite.py
+```
+
+## 📝 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/improvement`)
+3. Test your changes (`./check.sh`)
+4. Commit your changes (`git commit -am 'Add improvement'`)
+5. Push to the branch (`git push origin feature/improvement`)
+6. Create a Pull Request
+
+## 🔗 Related Projects
+
+- [Pi-hole](https://pi-hole.net/) - Network-wide ad blocking
+- [Unbound](https://nlnetlabs.nl/projects/unbound/) - Recursive DNS resolver
+- [NetAlertX](https://github.com/jokob-sk/NetAlertX) - Network monitoring
+- [FastAPI](https://fastapi.tiangolo.com/) - Modern Python web framework
