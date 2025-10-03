@@ -9,9 +9,6 @@ set -euo pipefail
 readonly UNBOUND_PORT=5335
 readonly NETALERTX_PORT=20211
 readonly PYTHON_SUITE_PORT=8090
-readonly NETALERTX_IMAGE="jokobsk/netalertx:latest"
-readonly SUITE_API_KEY=${SUITE_API_KEY:-$(openssl rand -hex 16)}
-readonly INSTALL_USER=${SUDO_USER:-$(whoami)}
 readonly PROJECT_DIR="$(pwd)"
 
 # 🎨 Colors
@@ -37,31 +34,6 @@ check_system() {
     success "System checks passed"
 }
 
-# 🧰 Ubuntu resolver handling (Port 53)
-handle_systemd_resolved() {
-    step "Checking systemd-resolved on Ubuntu (port 53)"
-    if [[ -r /etc/os-release ]]; then
-        # shellcheck disable=SC1091
-        . /etc/os-release
-        if [[ "${ID:-}" == ubuntu* || "${ID_LIKE:-}" == *ubuntu* ]]; then
-            if systemctl list-unit-files | grep -q '^systemd-resolved\.service'; then
-                if systemctl is-active --quiet systemd-resolved; then
-                    warn "systemd-resolved is active; stopping and disabling to free port 53"
-                    systemctl stop systemd-resolved || true
-                fi
-                systemctl disable systemd-resolved || true
-                # If resolv.conf is a symlink (typical on Ubuntu), replace it with a static file
-                if [[ -L /etc/resolv.conf ]]; then
-                    warn "/etc/resolv.conf is a symlink; replacing with static resolver"
-                    mv -f /etc/resolv.conf /etc/resolv.conf.backup 2>/dev/null || true
-                    printf 'nameserver 127.0.0.1\n' > /etc/resolv.conf
-                fi
-            fi
-        fi
-    fi
-}
-
-# 🔌 Port conflicts
 check_ports() {
     step "Checking ports"
     local ports=($UNBOUND_PORT $NETALERTX_PORT $PYTHON_SUITE_PORT 53)
@@ -76,7 +48,6 @@ check_ports() {
 install_packages() {
     step "Installing system packages"
     apt-get update -qq
-    apt-get install -y unbound ca-certificates curl dnsutils \
         python3 python3-venv python3-pip git docker.io openssl systemd sqlite3
     success "System packages installed"
 }
@@ -104,7 +75,6 @@ server:
     cache-max-ttl: 86400
     trust-anchor-file: /var/lib/unbound/root.key
     root-hints: /var/lib/unbound/root.hints
-    tls-cert-bundle: /etc/ssl/certs/ca-certificates.crt
 
 forward-zone:
     name: "."
@@ -153,9 +123,6 @@ install_netalertx() {
 setup_python_suite() {
     step "Setting up Python suite"
     cd "$PROJECT_DIR"
-    # Ensure data directory exists and is writable by service user
-    install -d -m 0755 "$PROJECT_DIR/data"
-    chown -R "$INSTALL_USER:$INSTALL_USER" "$PROJECT_DIR/data"
     [[ -d .venv ]] || sudo -u "$INSTALL_USER" python3 -m venv .venv
     sudo -u "$INSTALL_USER" .venv/bin/pip install -U pip
     sudo -u "$INSTALL_USER" .venv/bin/pip install -r requirements.txt
@@ -182,7 +149,6 @@ NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
-ReadWritePaths=$PROJECT_DIR $PROJECT_DIR/data
 
 [Install]
 WantedBy=multi-user.target
@@ -203,7 +169,6 @@ ENV
 run_health_checks() {
     step "Running health checks"
     dig +short @127.0.0.1 -p $UNBOUND_PORT example.com | grep -q "." && success "Unbound OK" || error "Unbound FAIL"
-    pihole status | grep -iEq "blocking.+enabled|enabled" && success "Pi-hole OK" || warn "Pi-hole status unclear"
     docker ps | grep -q netalertx && success "NetAlertX OK" || warn "NetAlertX missing"
     systemctl is-active --quiet pihole-suite && success "Python suite OK" || warn "Python suite not active"
 }
