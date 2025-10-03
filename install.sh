@@ -34,7 +34,6 @@ check_system() {
     success "System checks passed"
 }
 
-# 🔌 Port conflicts
 check_ports() {
     step "Checking ports"
     local ports=($UNBOUND_PORT $NETALERTX_PORT $PYTHON_SUITE_PORT 53)
@@ -49,7 +48,6 @@ check_ports() {
 install_packages() {
     step "Installing system packages"
     apt-get update -qq
-
         python3 python3-venv python3-pip git docker.io openssl systemd sqlite3
     success "System packages installed"
 }
