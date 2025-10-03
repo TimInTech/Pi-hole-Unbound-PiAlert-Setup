@@ -3,7 +3,6 @@
 import logging
 import sqlite3
 import threading
-import time
 from typing import Optional
 
 from .allocator import IPPool
