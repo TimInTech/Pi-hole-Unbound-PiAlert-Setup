@@ -1,0 +1,6 @@
+PACKAGES_OK=false
+UNBOUND_OK=false
+PIHOLE_OK=false
+NETALERTX_OK=false
+PY_SUITE_OK=false
+HEALTH_OK=false

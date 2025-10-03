@@ -1,249 +1,234 @@
 <div align="center">
 
-# 🛡️ Pi-hole + Unbound + NetAlertX
-### **Ein-Klick DNS-Sicherheit & Monitoring-Stack**
+# 🛡️ Pi-hole + Unbound + NetAlertX + Python Suite
+### **Ein-Klick-DNS-Sicherheit & Monitoring-Stack**
 
-[![Build Status](https://img.shields.io/github/actions/workflow/status/TimInTech/Pi-hole-Unbound-PiAlert-Setup/ci.yml?branch=main&style=for-the-badge&logo=github)](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/actions)
-[![License](https://img.shields.io/github/license/TimInTech/Pi-hole-Unbound-PiAlert-Setup?style=for-the-badge&color=blue)](LICENSE)
-[![Pi-hole](https://img.shields.io/badge/Pi--hole-v6.x-red?style=for-the-badge&logo=pihole)](https://pi-hole.net/)
-[![Unbound](https://img.shields.io/badge/Unbound-DNS-orange?style=for-the-badge)](https://nlnetlabs.nl/projects/unbound/)
-[![NetAlertX](https://img.shields.io/badge/NetAlertX-Monitor-green?style=for-the-badge)](https://github.com/jokob-sk/NetAlertX)
-[![Debian](https://img.shields.io/badge/Debian-Compatible-red?style=for-the-badge&logo=debian)](https://debian.org/)
-[![Python](https://img.shields.io/badge/Python-3.12+-blue?style=for-the-badge&logo=python)](https://python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/blob/main/LICENSE)
+[![ShellCheck](https://img.shields.io/badge/ShellCheck-Pass-brightgreen?style=for-the-badge&logo=gnu-bash)](https://www.shellcheck.net/)
+[![Debian](https://img.shields.io/badge/Debian-11%2B%20%7C%20Ubuntu-22.04%2B-red?style=for-the-badge&logo=debian)](https://debian.org/)
 
-**🧰 Tech Stack**  
-<img src="https://skillicons.dev/icons?i=linux,debian,ubuntu,raspberrypi,bash,python,fastapi,sqlite,docker" alt="Tech Stack" />
+**🧰 Technologie-Stack**  
+<img src="https://skillicons.dev/icons?i=linux,debian,ubuntu,bash,python,fastapi,sqlite,docker" alt="Tech Stack" />
 
-**🌐 Sprachen:** 🇩🇪 Deutsch (diese Datei) • [🇬🇧 English](README.md)
+**🌐 Sprachen:** [🇬🇧 English](README.md) • 🇩🇪 Deutsch
 
 </div>
 
 ---
 
-## ✨ Features
+## ✨ **Hauptmerkmale**
 
-✅ **Ein-Klick-Installation** - Setup mit einem Befehl  
-✅ **DNS-Sicherheit** - Pi-hole + Unbound mit DNSSEC  
-✅ **Netzwerk-Monitoring** - NetAlertX Geräte-Tracking  
-✅ **API-Monitoring** - Python FastAPI + SQLite  
-✅ **Produktionsbereit** - Systemd-Hardening & Auto-Restart  
-✅ **Idempotent** - Sicher mehrfach ausführbar  
+| Funktion                    | Host-Modus              | Container-Modus               |
+|-----------------------------|--------------------------|------------------------------|
+| **🕳️ Pi-hole**             | Systemd-Dienst          | Docker-Container (Ports 8053→53, 8080→80) |
+| **🔐 Unbound**              | Systemd-Dienst (Port 5335) | Host-gebunden (Port 5335)       |
+| **📡 NetAlertX**            | Docker-Container         | Docker-Container             |
+| **🐍 Python Suite**         | Systemd-Dienst          | Vordergrundprozess           |
+| **🔄 Idempotenz**           | ✅ Checkpoint-Fortsetzung | ✅ Checkpoint-Fortsetzung     |
+| **🔒 Sicherheit**           | Systemd-Hardening       | Localhost-Binding + Docker-Isolation |
+
+✅ **Ein-Klick-Installation** – Vollständiger Stack mit einem Befehl  
+✅ **Dual-Modus-Betrieb** – Host- oder Container-Bereitstellung  
+✅ **Idempotent & Fortsetzbar** – Sichere Wiederholung mit `--resume`  
+✅ **DNS-Sicherheit** – Pi-hole + Unbound mit DNSSEC und DoT  
+✅ **Netzwerk-Monitoring** – NetAlertX-Geräteverfolgung  
+✅ **Produktionsbereit** – Systemd-Hardening, Auto-Restart und Logging  
 
 ---
 
-## ⚡ Ein-Klick-Schnellstart
+## ⚡ **Schnellstart**
 
+### **1. Repository klonen**
 ```bash
 git clone https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup.git
 cd Pi-hole-Unbound-PiAlert-Setup
 chmod +x install.sh
+```
+
+### **2. Installationsmodus wählen**
+
+#### Option A: Host-Modus (Standard)
+```bash
 sudo ./install.sh
 ```
+- Nutzt systemd für alle Dienste
+- Unbound: localhost:5335 (DNSSEC + DoT zu Quad9)
+- Pi-hole: Standard-Ports (53, 80)
+- Python Suite: Systemd-Dienst mit Sicherheitshärtung
 
-**Fertig!** 🎉 Ihr kompletter DNS-Sicherheits-Stack läuft jetzt.
+#### Option B: Container-Modus
+```bash
+sudo ./install.sh --container-mode
+```
+- Pi-hole und NetAlertX laufen in Docker
+- Port-Mappings:
+  - Pi-hole DNS: 8053→53 (Host→Container)
+  - Pi-hole Web: 8080→80
+  - NetAlertX: 20211→20211
+- Python Suite läuft im Vordergrund (kein systemd)
+
+### **3. Erweiterte Optionen**
+
+| Flag | Beschreibung |
+|------|-------------|
+| `--resume` | Fortsetzen vom letzten Checkpoint |
+| `--force` | Alle Zustände zurücksetzen und neu installieren |
+| `--dry-run` | Zeigt Aktionen ohne Ausführung |
+| `--auto-remove-conflicts` | Löst APT-Paketkonflikte automatisch |
 
 ---
 
-## 🧰 Was installiert wird
-
-| Komponente | Zweck | Zugriff |
-|------------|-------|---------|
-| **🕳️ Pi-hole** | DNS-Werbeblocker & Web-UI | `http://[ihre-ip]/admin` |
-| **🔐 Unbound** | Rekursiver DNS + DNSSEC | `127.0.0.1:5335` |
-| **📡 NetAlertX** | Netzwerkgeräte-Monitoring | `http://[ihre-ip]:20211` |
-| **🐍 Python API** | Monitoring & Statistik-API | `http://127.0.0.1:8090` |
-
----
-
-## 🗺️ Architektur
+## 🗺️ **Architektur**
 
 ```
-┌─────────────┐    ┌──────────────┐    ┌─────────────┐
-│   Clients   │───▶│   Pi-hole    │───▶│   Unbound   │
-│ 192.168.x.x │    │    :53       │    │   :5335     │
-└─────────────┘    └──────┬───────┘    └─────────────┘
-                          │                     │
-                          ▼                     ▼
-                   ┌─────────────┐    ┌─────────────┐
-                   │  NetAlertX  │    │ Root-Server │
-                   │   :20211    │    │  + Quad9    │
-                   └─────────────┘    └─────────────┘
+┌─────────────┐    ┌─────────────────┐    ┌─────────────┐
+│   Clients   │───▶│    Pi-hole     │───▶│   Unbound   │
+│ 192.168.x.x │    │ (Port 53/80)   │    │ (Port 5335) │
+└─────────────┘    └──────┬──────────┘    └──────┬──────┘
+                          │                      │
+                          ▼                      ▼
+                   ┌─────────────┐         ┌─────────────┐
+                   │  NetAlertX  │         │  Quad9      │
+                   │ (Port 20211) │         │ (DoT)       │
+                   └─────────────┘         └─────────────┘
                           │
                           ▼
                    ┌─────────────┐
                    │ Python API  │
-                   │   :8090     │
+                   │ (Port 8090)  │
                    └─────────────┘
 ```
 
 **Datenfluss:**
-1. **Clients** → Pi-hole (DNS-Filterung)
-2. **Pi-hole** → Unbound (rekursive Auflösung)
-3. **Unbound** → Root-Server (DNSSEC-Validierung)
-4. **NetAlertX** → Netzwerk-Monitoring
-5. **Python API** → Aggregierte Monitoring-Daten
+1. Clients → Pi-hole (DNS-Filterung)
+2. Pi-hole → Unbound (rekursive Auflösung mit DNSSEC)
+3. Unbound → Quad9 (DNS-over-TLS)
+4. NetAlertX → Netzwerkgeräte-Monitoring
+5. Python API → Aggregierte Monitoring-Daten
 
 ---
 
-## 🔌 API-Referenz
+## 🔌 **API-Referenz**
 
-### Authentifizierung
-Alle Endpunkte benötigen `X-API-Key`-Header:
+### **Authentifizierung**
+Alle Endpunkte erfordern den `X-API-Key`-Header:
 ```bash
-curl -H "X-API-Key: ihr-api-key" http://127.0.0.1:8090/endpoint
+curl -H "X-API-Key: $(grep SUITE_API_KEY .env | cut -d= -f2)" http://127.0.0.1:8090/health
 ```
 
-### Endpunkte
-
-#### `GET /health`
-```json
-{
-  "ok": true,
-  "message": "Pi-hole Suite API is running",
-  "version": "1.0.0"
-}
-```
-
-#### `GET /dns?limit=50`
-```json
-[
-  {
-    "timestamp": "Dec 21 10:30:45",
-    "client": "192.168.1.100", 
-    "query": "example.com",
-    "action": "query"
-  }
-]
-```
-
-#### `GET /devices`
-```json
-[
-  {
-    "id": 1,
-    "ip": "192.168.1.100",
-    "mac": "aa:bb:cc:dd:ee:ff", 
-    "hostname": "laptop",
-    "last_seen": "2024-12-21 10:30:00"
-  }
-]
-```
-
-#### `GET /stats`
-```json
-{
-  "total_dns_logs": 1250,
-  "total_devices": 15,
-  "recent_queries": 89
-}
-```
+### **Endpunkte**
+| Endpunkt | Methode | Beschreibung |
+|----------|--------|-------------|
+| `/health` | GET | Gesundheitscheck |
+| `/info` | GET | Systeminformationen |
+| `/stats` | GET | Systemstatistiken |
 
 ---
 
-## 🛠️ Manuelle Schritte (Optional)
+## 🛠️ **Nach der Installation**
 
-### Pi-hole-Konfiguration
-1. Admin-Interface aufrufen: `http://[ihre-ip]/admin`
-2. **Einstellungen → DNS** navigieren
-3. **Custom upstream** prüfen: `127.0.0.1#5335`
-4. Geräte konfigurieren, um Pi-hole als DNS-Server zu verwenden
-
-### NetAlertX-Setup
-- Dashboard aufrufen: `http://[ihre-ip]:20211`
-- Scan-Zeitpläne und Benachrichtigungen konfigurieren
-- Netzwerk-Topologie und Geräteliste überprüfen
-
----
-
-## 🧪 Gesundheitschecks & Problembehandlung
-
-### Schneller Gesundheitscheck
+### **1. Dienste überprüfen**
 ```bash
-# Unbound testen
-dig @127.0.0.1 -p 5335 example.com
+# Host-Modus
+systemctl status unbound pihole-FTL pihole-suite
 
-# Pi-hole testen
-pihole status
-
-# NetAlertX testen
-docker logs netalertx
-
-# Python API testen
-curl -H "X-API-Key: $SUITE_API_KEY" http://127.0.0.1:8090/health
-```
-
-### Service-Verwaltung
-```bash
-# Services prüfen
-systemctl status pihole-suite unbound pihole-FTL
+# Container-Modus
 docker ps
 
-# Logs anzeigen  
-journalctl -u pihole-suite -f
-journalctl -u unbound -f
+# Unbound testen
+dig @127.0.0.1 -p 5335 example.com +short
 
-# Services neustarten
-systemctl restart pihole-suite
-pihole restartdns
-docker restart netalertx
+# Python API testen
+API_KEY=$(grep SUITE_API_KEY .env | cut -d= -f2)
+curl -H "X-API-Key: $API_KEY" http://127.0.0.1:8090/health
 ```
 
-### Häufige Probleme
+### **2. Clients konfigurieren**
+- Pi-hole (192.168.x.x) als DNS-Server auf allen Geräten einrichten.
+- **Zugriff:**
+  - Pi-hole Admin: `http://[Server-IP]` (Host-Modus) oder `http://[Server-IP]:8080` (Container-Modus)
+  - NetAlertX: `http://[Server-IP]:20211`
+  - Python API: `http://127.0.0.1:8090/docs`
 
+---
+
+## 🧪 **Problembehandlung**
+
+### **Häufige Probleme**
 | Problem | Lösung |
-|---------|--------|
-| **Port 53 belegt** | `sudo systemctl stop systemd-resolved` |
-| **API-Key fehlt** | `.env`-Datei prüfen oder mit Installer neu generieren |
-| **Datenbankfehler** | `python scripts/bootstrap.py` ausführen |
-| **Unbound startet nicht** | `/etc/unbound/unbound.conf.d/pi-hole.conf` prüfen |
+|-------|----------|
+| Port 53 belegt | `sudo systemctl stop systemd-resolved` |
+| APT-Konflikte | Flag `--auto-remove-conflicts` verwenden |
+| Docker-Berechtigungen | `sudo usermod -aG docker $USER` + Neuanmeldung |
+| Unbound startet nicht | `/etc/unbound/unbound.conf.d/` prüfen |
+| API-Key fehlt | Neu generieren mit `openssl rand -hex 16` |
+
+### **Gesundheitschecks**
+```bash
+# Unbound
+dig @127.0.0.1 -p 5335 example.com +short
+
+# Pi-hole (Host-Modus)
+pihole status
+
+# Docker (Container-Modus)
+docker logs pihole netalertx
+
+# Python Suite
+systemctl status pihole-suite  # Host-Modus
+```
+
+### **systemd-resolved (Ubuntu)**
+Dieses Skript deaktiviert `systemd-resolved`, um Port 53 freizugeben:
+```bash
+# Ursprüngliches Verhalten wiederherstellen
+sudo mv /etc/resolv.conf.bak /etc/resolv.conf
+sudo systemctl enable --now systemd-resolved
+```
 
 ---
 
-## 🧯 Sicherheitshinweise
+## 🔒 **Sicherheitshinweise**
 
-### 🔐 API-Sicherheit
-- **API-Keys** werden automatisch generiert (16-Byte Hex)
-- **CORS** nur für localhost aktiviert
-- **Authentifizierung** für alle Endpunkte erforderlich
+### **API-Sicherheit**
+- Automatisch generierte Keys: 16-Byte-Hex (`openssl rand -hex 16`)
+- CORS: Auf localhost beschränkt
+- Authentifizierung: Für alle Endpunkte erforderlich
 
-### 🛡️ Systemd-Hardening
-- **NoNewPrivileges** verhindert Rechte-Eskalation
-- **ProtectSystem=strict** Schreibschutz für Dateisystem
-- **PrivateTmp** isolierte temporäre Verzeichnisse
-- **Memory-Limits** verhindern Ressourcen-Erschöpfung
+### **Systemd-Hardening**
+```ini
+[Service]
+NoNewPrivileges=yes
+ProtectSystem=full
+PrivateTmp=yes
+MemoryDenyWriteExecute=yes
+```
 
-### 🔒 Netzwerk-Sicherheit
-- **Unbound** nur auf localhost (nicht exponiert)
-- **DNS über TLS** zu Upstream-Resolvern
-- **DNSSEC**-Validierung aktiviert
-
----
-
-## 🤝 Mitwirken
-
-1. **Repository forken**
-2. **Feature-Branch erstellen**: `git checkout -b feature/tolles-feature`
-3. **Änderungen committen**: `git commit -m 'feat: tolles Feature hinzugefügt'`
-4. **Testen mit**: `ruff check . && pytest`
-5. **Push** und Pull Request erstellen
+### **Netzwerksicherheit**
+- Unbound: Nur localhost (127.0.0.1:5335)
+- NetAlertX: Containerisiert (isoliert vom Host)
+- DNS-over-TLS: Verschlüsselte Upstream-Verbindung zu Quad9
 
 ---
 
-## 📜 Lizenz
+## 🤝 **Mitwirken**
 
-Dieses Projekt ist unter der **MIT-Lizenz** lizenziert - siehe [LICENSE](LICENSE)-Datei.
+1. Repository forken
+2. Feature-Branch erstellen: `git checkout -b feat/ihr-feature`
+3. Änderungen commiten: `git commit -m 'feat: füge ihr Feature hinzu'`
+4. Pushen und einen Pull Request öffnen
 
 ---
 
-## 📈 Changelog
+## 📜 **Lizenz**
 
-Siehe [CHANGELOG.md](CHANGELOG.md) für Versionshistorie und Updates.
+MIT-Lizenz – Siehe [LICENSE](LICENSE).
 
 ---
 
 <div align="center">
 
-**Mit ❤️ für die Pi-hole-Community erstellt**
+**Mit ❤️ für die Pi-hole-Community entwickelt**
 
 [🐛 Bug melden](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/issues) •
 [✨ Feature anfordern](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/issues) •
