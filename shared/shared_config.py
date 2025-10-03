@@ -1,6 +1,6 @@
 """Shared configuration for the Pi-hole suite."""
 
-"""Shared configuration helpers for the suite."""
+"""
 import logging
 import os
 from pathlib import Path
@@ -29,13 +29,3 @@ logging.basicConfig(
 # Module logger
 logger = logging.getLogger(__name__)
 logger.info(f"Configuration loaded - Data directory: {DATA_DIR}, Log level: {LOG_LEVEL}")
-INTERFACE = os.getenv("SUITE_INTERFACE", "eth0")
-DNS_PORT = int(os.getenv("SUITE_DNS_PORT", "5335"))
-LOG_LEVEL = os.getenv("SUITE_LOG_LEVEL", "INFO")
-DATA_DIR = Path(os.getenv("SUITE_DATA_DIR", "data"))
-
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-
-DB_PATH = DATA_DIR / "shared.sqlite"
-
-logging.basicConfig(level=LOG_LEVEL, format="%(asctime)s [%(levelname)s] %(message)s")
