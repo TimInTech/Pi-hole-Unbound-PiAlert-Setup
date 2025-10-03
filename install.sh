@@ -52,7 +52,6 @@ install_packages() {
     success "System packages installed"
 }
 
-# 🔐 Unbound config
 configure_unbound() {
     step "Configuring Unbound"
     install -d -m 0755 /var/lib/unbound
