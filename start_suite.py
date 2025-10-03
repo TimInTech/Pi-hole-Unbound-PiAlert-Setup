@@ -28,7 +28,6 @@ except ImportError as e:
 
 # Optional demo component - disabled by default
 ENABLE_PYALLOC_DEMO = os.getenv("ENABLE_PYALLOC_DEMO", "false").lower() == "true"
-
 if ENABLE_PYALLOC_DEMO:
     try:
         from pyalloc.main import start as alloc_start
@@ -42,33 +41,8 @@ async def run_api() -> None:
     """Run the FastAPI application."""
     port = int(os.getenv("SUITE_PORT", "8090"))
     host = os.getenv("SUITE_HOST", "127.0.0.1")
-    
-    config = uvicorn.Config(
-        api_app,
-        host=host,
-        port=port,
-        log_level="info",
-        access_log=True
-    )
-import asyncio
-import os
-import threading
 
-import uvicorn
-
-from api.main import app as api_app
-from pyhole.dns_monitor import start as dns_start
-from shared.db import init_db
-
-# Optional demo component - disabled by default for one-click installer
-ENABLE_PYALLOC_DEMO = os.getenv("ENABLE_PYALLOC_DEMO", "false").lower() == "true"
-
-if ENABLE_PYALLOC_DEMO:
-    from pyalloc.main import start as alloc_start
-
-
-async def run_api() -> None:
-    config = uvicorn.Config(api_app, host="127.0.0.1", port=8090, log_level="info")
+    config = uvicorn.Config(api_app, host=host, port=port, log_level="info", access_log=True)
     server = uvicorn.Server(config)
     await server.serve()
 
@@ -76,14 +50,14 @@ async def run_api() -> None:
 def main() -> None:
     """Main application entry point."""
     logger.info("Starting Pi-hole Suite...")
-    
+
     # Verify API key
     api_key = os.environ.get("SUITE_API_KEY")
     if not api_key:
         logger.error("SUITE_API_KEY environment variable must be set")
         logger.info("Generate one with: openssl rand -hex 16")
         sys.exit(1)
-    
+
     # Initialize database
     try:
         conn = init_db()
@@ -91,20 +65,20 @@ def main() -> None:
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")
         sys.exit(1)
-    
+
     # Start core DNS monitoring
     try:
         dns_thread = threading.Thread(
-            target=dns_start, 
-            args=(conn,), 
+            target=dns_start,
+            args=(conn,),
             daemon=True,
-            name="DNSMonitor"
+            name="DNSMonitor",
         )
         dns_thread.start()
         logger.info("DNS monitor started")
     except Exception as e:
         logger.error(f"Failed to start DNS monitor: {e}")
-    
+
     # Start optional demo allocator if enabled
     if ENABLE_PYALLOC_DEMO:
         try:
@@ -112,28 +86,16 @@ def main() -> None:
                 target=alloc_start,
                 args=(conn,),
                 daemon=True,
-                name="AllocDemo"
+                name="AllocDemo",
             )
             alloc_thread.start()
             logger.info("PyAlloc demo component started")
         except Exception as e:
             logger.warning(f"Failed to start PyAlloc demo: {e}")
-    
+
     logger.info(f"API Key: {api_key[:8]}...")
     logger.info("Starting API server...")
 
-    conn = init_db()
-    
-    # Start core DNS monitoring
-    threading.Thread(target=dns_start, args=(conn,), daemon=True).start()
-    
-    # Start optional demo allocator if enabled
-    if ENABLE_PYALLOC_DEMO:
-        threading.Thread(target=alloc_start, args=(conn,), daemon=True).start()
-        print("✓ Started with pyalloc demo component")
-    else:
-        print("✓ Started in production mode (pyalloc demo disabled)")
-    
     try:
         asyncio.run(run_api())
     except KeyboardInterrupt:
@@ -141,11 +103,6 @@ def main() -> None:
     except Exception as e:
         logger.error(f"Application error: {e}")
         sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()
-        print("Shutting down…")
 
 
 if __name__ == "__main__":

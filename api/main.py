@@ -12,10 +12,10 @@ from shared import shared_config as config
 from shared.db import init_db
 from .schemas import (
     DeviceResponse,
-    DNSLogResponse, 
+    DNSLogResponse,
     HealthResponse,
     LeaseResponse,
-    StatsResponse
+    StatsResponse,
 )
 
 
@@ -26,17 +26,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     yield
 
 
-# FastAPI app with modern configuration
 app = FastAPI(
     title="Pi-hole Suite API",
     description="Monitoring and management API for Pi-hole + Unbound + NetAlertX stack",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
-# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
@@ -47,19 +45,12 @@ app.add_middleware(
 
 
 def get_api_key() -> str:
-    """Get configured API key."""
-"""FastAPI app exposing Pi-hole suite data."""
-import os
-import sqlite3
-
-
-
-def _get_api_key() -> str:
+    """Get configured API key from environment."""
     return os.getenv("SUITE_API_KEY", "")
 
 
 def get_db() -> Generator[sqlite3.Connection, None, None]:
-    """Database dependency."""
+    """FastAPI dependency to provide a DB connection."""
     conn = sqlite3.connect(config.DB_PATH)
     conn.row_factory = sqlite3.Row
     try:
@@ -72,72 +63,56 @@ def require_api_key(x_api_key: Optional[str] = Header(None)) -> None:
     """Require valid API key for authentication."""
     api_key = get_api_key()
     if not api_key:
-        raise HTTPException(
-            status_code=500, 
-            detail="API key not configured on server"
-        )
+        raise HTTPException(status_code=500, detail="API key not configured on server")
     if not x_api_key:
-        raise HTTPException(
-            status_code=401, 
-            detail="Missing API key header"
-        )
+        raise HTTPException(status_code=401, detail="Missing API key header")
     if x_api_key != api_key:
-        raise HTTPException(
-            status_code=401, 
-            detail="Invalid API key"
-        )
+        raise HTTPException(status_code=401, detail="Invalid API key")
 
 
 @app.get("/", include_in_schema=False)
 async def root():
-    """Root endpoint redirect."""
+    """Root endpoint information."""
     return {"message": "Pi-hole Suite API", "docs": "/docs"}
 
 
 @app.get(
-    "/health", 
-    dependencies=[Depends(require_api_key)], 
+    "/health",
+    dependencies=[Depends(require_api_key)],
     response_model=HealthResponse,
     summary="Health Check",
-    description="Simple health check endpoint to verify API is running"
+    description="Simple health check endpoint to verify API is running",
 )
 def health() -> HealthResponse:
-    """Health check endpoint."""
-    return HealthResponse(
-        ok=True,
-        message="Pi-hole Suite API is running",
-        version="1.0.0"
-    )
+    return HealthResponse(ok=True, message="Pi-hole Suite API is running", version="1.0.0")
 
 
 @app.get(
-    "/dns", 
-    dependencies=[Depends(require_api_key)], 
+    "/dns",
+    dependencies=[Depends(require_api_key)],
     response_model=List[DNSLogResponse],
     summary="DNS Query Logs",
-    description="Get recent DNS query logs from Pi-hole"
+    description="Get recent DNS query logs from Pi-hole",
 )
 def get_dns_logs(
     limit: int = Query(50, ge=1, le=1000, description="Maximum number of logs to return"),
-    db: sqlite3.Connection = Depends(get_db)
+    db: sqlite3.Connection = Depends(get_db),
 ) -> List[DNSLogResponse]:
-    """Get recent DNS query logs."""
     cursor = db.execute(
         "SELECT timestamp, client, query, action FROM dns_logs ORDER BY id DESC LIMIT ?",
-        (limit,)
+        (limit,),
     )
     return [DNSLogResponse(**dict(row)) for row in cursor.fetchall()]
 
 
 @app.get(
-    "/leases", 
+    "/leases",
     dependencies=[Depends(require_api_key)],
     response_model=List[LeaseResponse],
-    summary="DHCP Leases", 
-    description="Get current DHCP lease information"
+    summary="DHCP Leases",
+    description="Get current DHCP lease information",
 )
 def get_ip_leases(db: sqlite3.Connection = Depends(get_db)) -> List[LeaseResponse]:
-    """Get IP lease information."""
     cursor = db.execute(
         "SELECT ip, mac, hostname, lease_start, lease_end FROM ip_leases ORDER BY lease_start DESC"
     )
@@ -145,14 +120,13 @@ def get_ip_leases(db: sqlite3.Connection = Depends(get_db)) -> List[LeaseRespons
 
 
 @app.get(
-    "/devices", 
-    dependencies=[Depends(require_api_key)], 
+    "/devices",
+    dependencies=[Depends(require_api_key)],
     response_model=List[DeviceResponse],
     summary="Network Devices",
-    description="Get list of known network devices"
+    description="Get list of known network devices",
 )
 def get_devices(db: sqlite3.Connection = Depends(get_db)) -> List[DeviceResponse]:
-    """Get network devices list."""
     cursor = db.execute(
         "SELECT id, ip, mac, hostname, last_seen FROM devices ORDER BY last_seen DESC"
     )
@@ -164,42 +138,14 @@ def get_devices(db: sqlite3.Connection = Depends(get_db)) -> List[DeviceResponse
     dependencies=[Depends(require_api_key)],
     response_model=StatsResponse,
     summary="System Statistics",
-    description="Get basic statistics about the monitored system"
+    description="Get basic statistics about the monitored system",
 )
 def get_stats(db: sqlite3.Connection = Depends(get_db)) -> StatsResponse:
-    """Get system statistics."""
-    # Get DNS log count
-    dns_cursor = db.execute("SELECT COUNT(*) as count FROM dns_logs")
-    dns_count = dns_cursor.fetchone()["count"]
-    
-    # Get device count
-    device_cursor = db.execute("SELECT COUNT(*) as count FROM devices")
-    device_count = device_cursor.fetchone()["count"]
-    
-    # Get recent queries (last hour)
-    recent_cursor = db.execute(
+    dns_count = db.execute("SELECT COUNT(*) as count FROM dns_logs").fetchone()["count"]
+    device_count = db.execute("SELECT COUNT(*) as count FROM devices").fetchone()["count"]
+    recent_queries = db.execute(
         "SELECT COUNT(*) as count FROM dns_logs WHERE timestamp > datetime('now', '-1 hour')"
-    )
-    recent_queries = recent_cursor.fetchone()["count"]
-    
-    return StatsResponse(
-        total_dns_logs=dns_count,
-        total_devices=device_count,
-        recent_queries=recent_queries
-    )
-
-        
-    cur = db.execute(
-        "SELECT timestamp, client, query, action FROM dns_logs ORDER BY id DESC LIMIT ?",
-        (limit,),
-    )
-
-
-
-@app.get("/leases", dependencies=[Depends(require_key)])
-def get_ip_leases(db=Depends(get_db)):
-    cur = db.execute("SELECT ip, mac, hostname, lease_start, lease_end FROM ip_leases")
-    return [dict(row) for row in cur.fetchall()]
-
+    ).fetchone()["count"]
+    return StatsResponse(total_dns_logs=dns_count, total_devices=device_count, recent_queries=recent_queries)
 
 
