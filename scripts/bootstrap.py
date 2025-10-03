@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-<<<<<<< HEAD
 """Bootstrap script to check dependencies and initialize the suite."""
 
 import importlib.util
@@ -59,7 +58,6 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-=======
 """Check suite dependencies."""
 import importlib.util
 import sys
@@ -84,4 +82,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
->>>>>>> origin/main

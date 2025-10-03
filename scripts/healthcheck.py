@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-<<<<<<< HEAD
 """Health check script for Pi-hole suite."""
 
 import os
@@ -101,7 +100,6 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-=======
 """Verify database connectivity."""
 import sqlite3
 import sys
@@ -121,4 +119,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
->>>>>>> origin/main

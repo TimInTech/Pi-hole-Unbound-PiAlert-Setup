@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # 🛡️ Final One-Click Installer for Complete Pi-hole Stack
 
 ## 🎯 Objectives
@@ -157,7 +156,6 @@ tests/test_dns_monitor.py::test_parse_pihole_line_valid PASSED    [ 83%]
 tests/test_dns_monitor.py::test_parse_pihole_line_empty PASSED    [ 91%]
 tests/test_dns_monitor.py::test_parse_pihole_line_invalid PASSED  [100%]
 
-============== 12 passed in 0.34s ==============
 ```
 
 ## 🚀 Quickstart Testing
@@ -231,7 +229,6 @@ journalctl -u pihole-suite -f                       # View logs
 ---
 
 **This PR delivers a complete, production-ready one-click installer that transforms any Debian/Ubuntu system into a comprehensive DNS security and monitoring platform with zero manual configuration required.**
-=======
 ## 🎯 Overview
 
 This comprehensive PR implements critical security fixes, repository hygiene improvements, and modern development standards for the Pi-hole Suite project.
@@ -296,4 +293,3 @@ This comprehensive PR implements critical security fixes, repository hygiene imp
 - `.gitignore`: Extended Python artifacts coverage
 
 This PR transforms the repository into a production-ready, enterprise-grade codebase with comprehensive security, testing, and quality standards.
->>>>>>> origin/main

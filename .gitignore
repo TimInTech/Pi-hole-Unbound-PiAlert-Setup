@@ -9,7 +9,6 @@ Thumbs.db
 # Env
 .env
 .env.*
-<<<<<<< HEAD
 *.bak
 *.swp
 *.tmp
@@ -19,5 +18,3 @@ __pycache__/
 *.pyc
 data/
 *.sqlite
-=======
->>>>>>> origin/main

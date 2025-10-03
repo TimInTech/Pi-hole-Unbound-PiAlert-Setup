@@ -1,19 +1,15 @@
-<<<<<<< HEAD
 """Robust Pi-hole log monitor with log rotation support."""
 
 import logging
 import re
 import sqlite3
-=======
 """Simple Pi-hole log tailer with log rotation support."""
 import logging
->>>>>>> origin/main
 import threading
 import time
 from pathlib import Path
 from typing import Optional, Tuple
 
-<<<<<<< HEAD
 from shared.shared_config import PIHOLE_LOG_PATH
 
 logger = logging.getLogger(__name__)
@@ -220,7 +216,6 @@ def stop() -> None:
 def is_running() -> bool:
     """Check if the monitor is currently running."""
     return _monitor_thread is not None and _monitor_thread.is_alive()
-=======
 logger = logging.getLogger(__name__)
 
 PIHOLE_LOG = Path("/var/log/pihole.log")
@@ -306,4 +301,3 @@ def start(conn):
 def stop() -> None:
     """Stop the DNS monitor."""
     _stop_event.set()
->>>>>>> origin/main

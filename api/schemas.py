@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 """Pydantic schemas for API responses."""
 
 from typing import Optional
@@ -44,7 +43,6 @@ class StatsResponse(BaseModel):
     total_dns_logs: int = Field(..., description="Total DNS log entries")
     total_devices: int = Field(..., description="Total known devices")
     recent_queries: int = Field(..., description="Queries in the last hour")
-=======
 """Pydantic models for API request/response validation."""
 from typing import Optional
 from pydantic import BaseModel, Field, field_validator
@@ -100,4 +98,3 @@ class DNSLogResponse(BaseModel):
 class HealthResponse(BaseModel):
     """Response model for health check."""
     ok: bool
->>>>>>> origin/main

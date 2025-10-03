@@ -2,8 +2,6 @@
 set -euo pipefail
 
 # Pi-hole + Unbound + NetAlertX + Python Suite One-Click Installer
-# ================================================================
-<<<<<<< HEAD
 # Modern, idempotent installer for complete DNS security stack
 # 
 # Author: TimInTech
@@ -111,7 +109,6 @@ install_packages() {
     apt-get install -y \
         unbound \
         unbound-anchor \
-=======
 # This script installs and configures:
 # - Unbound DNS resolver on 127.0.0.1:5335
 # - Pi-hole using Unbound as upstream
@@ -216,7 +213,6 @@ install_packages() {
     # Install required packages
     apt-get install -y \
         unbound \
->>>>>>> origin/main
         ca-certificates \
         curl \
         dnsutils \
@@ -226,7 +222,6 @@ install_packages() {
         git \
         docker.io \
         openssl \
-<<<<<<< HEAD
         systemd \
         sqlite3
     
@@ -246,7 +241,6 @@ configure_unbound() {
     
     # Create Pi-hole configuration
     log "Creating Unbound configuration..."
-=======
         systemctl
     
     log_success "System packages installed"
@@ -266,7 +260,6 @@ configure_unbound() {
     fi
     
     # Create Pi-hole specific Unbound configuration
->>>>>>> origin/main
     cat > /etc/unbound/unbound.conf.d/pi-hole.conf << 'EOF'
 server:
     # Basic settings
@@ -278,16 +271,13 @@ server:
     do-udp: yes
     do-tcp: yes
     
-<<<<<<< HEAD
     # Performance tuning
     edns-buffer-size: 1232
     prefetch: yes
     prefetch-key: yes
-=======
     # Performance settings
     edns-buffer-size: 1232
     prefetch: yes
->>>>>>> origin/main
     num-threads: 2
     so-rcvbuf: 1m
     so-sndbuf: 1m
@@ -297,11 +287,8 @@ server:
     hide-identity: yes
     hide-version: yes
     
-<<<<<<< HEAD
     # Security hardening
-=======
     # Security settings
->>>>>>> origin/main
     harden-glue: yes
     harden-dnssec-stripped: yes
     harden-below-nxdomain: yes
@@ -311,12 +298,9 @@ server:
     # Cache settings
     cache-min-ttl: 60
     cache-max-ttl: 86400
-<<<<<<< HEAD
     msg-cache-size: 50m
     rrset-cache-size: 100m
-=======
     prefetch-key: yes
->>>>>>> origin/main
     
     # DNSSEC
     trust-anchor-file: /var/lib/unbound/root.key
@@ -331,7 +315,6 @@ server:
 
 forward-zone:
     name: "."
-<<<<<<< HEAD
     forward-tls-upstream: yes
     forward-addr: 9.9.9.9@853#dns.quad9.net
     forward-addr: 149.112.112.112@853#dns.quad9.net
@@ -343,7 +326,6 @@ EOF
     
     # Start Unbound
     systemctl enable --now unbound
-=======
     # Use Quad9 as fallback
     forward-addr: 9.9.9.9@853#dns.quad9.net
     forward-addr: 149.112.112.112@853#dns.quad9.net
@@ -361,12 +343,10 @@ EOF
     systemctl restart unbound
     
     # Wait for Unbound to start
->>>>>>> origin/main
     sleep 3
     
     # Test Unbound
     if dig +short @127.0.0.1 -p $UNBOUND_PORT example.com | grep -q "93.184."; then
-<<<<<<< HEAD
         success "Unbound is responding correctly"
     else
         warn "Unbound test failed - continuing anyway"
@@ -407,7 +387,6 @@ EOF
     
     # Ensure Pi-hole uses Unbound
     log "Configuring Pi-hole upstream DNS..."
-=======
         log_success "Unbound is working correctly"
     else
         log_warning "Unbound test failed, but continuing..."
@@ -431,13 +410,11 @@ install_pihole() {
     log_info "Configuring Pi-hole to use Unbound..."
     
     # Set upstream DNS to Unbound
->>>>>>> origin/main
     if [[ -f /etc/pihole/setupVars.conf ]]; then
         sed -i "s/^PIHOLE_DNS_1=.*/PIHOLE_DNS_1=127.0.0.1#$UNBOUND_PORT/" /etc/pihole/setupVars.conf
         sed -i "s/^PIHOLE_DNS_2=.*/PIHOLE_DNS_2=/" /etc/pihole/setupVars.conf
     fi
     
-<<<<<<< HEAD
     # Restart Pi-hole
     pihole restartdns
     
@@ -461,7 +438,6 @@ install_netalertx() {
     
     # Run NetAlertX
     log "Starting NetAlertX container..."
-=======
     # Restart Pi-hole DNS
     pihole restartdns
     
@@ -485,14 +461,12 @@ install_netalertx() {
     docker rm netalertx 2>/dev/null || true
     
     # Run NetAlertX container
->>>>>>> origin/main
     docker run -d \
         --name netalertx \
         --restart unless-stopped \
         -p $NETALERTX_PORT:20211 \
         -v /opt/netalertx/config:/app/config \
         -v /opt/netalertx/db:/app/db \
-<<<<<<< HEAD
         -e TZ=$(timedatectl show --property=Timezone --value 2>/dev/null || echo "UTC") \
         $NETALERTX_IMAGE
     
@@ -538,7 +512,6 @@ EOF
     cat > /etc/systemd/system/pihole-suite.service << EOF
 [Unit]
 Description=Pi-hole Suite (API + monitoring)
-=======
         -e TZ=$(timedatectl show --property=Timezone --value) \
         jokobsk/netalertx:latest
     
@@ -568,13 +541,11 @@ setup_python_suite() {
     cat > /etc/systemd/system/pihole-suite.service << EOF
 [Unit]
 Description=Pi-hole Suite (API + workers)
->>>>>>> origin/main
 After=network.target pihole-FTL.service
 Wants=pihole-FTL.service
 
 [Service]
 Type=simple
-<<<<<<< HEAD
 User=$install_user
 Group=$install_user
 WorkingDirectory=$project_dir
@@ -588,7 +559,6 @@ NoNewPrivileges=yes
 ProtectSystem=full
 ProtectHome=read-only
 ReadWritePaths=$project_dir/data
-=======
 User=$INSTALL_USER
 Group=$INSTALL_USER
 WorkingDirectory=$PROJECT_DIR
@@ -604,7 +574,6 @@ NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
 ReadWritePaths=$PROJECT_DIR/data
->>>>>>> origin/main
 PrivateTmp=yes
 PrivateDevices=yes
 ProtectHostname=yes
@@ -615,29 +584,22 @@ ProtectControlGroups=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes
 RemoveIPC=yes
-<<<<<<< HEAD
-=======
 MemoryDenyWriteExecute=yes
->>>>>>> origin/main
 
 [Install]
 WantedBy=multi-user.target
 EOF
     
-<<<<<<< HEAD
     # Enable and start service
-=======
     # Create data directory with proper ownership
     mkdir -p "$PROJECT_DIR/data"
     chown -R "$INSTALL_USER:$INSTALL_USER" "$PROJECT_DIR/data"
     
     # Enable and start the service
->>>>>>> origin/main
     systemctl daemon-reload
     systemctl enable pihole-suite.service
     systemctl start pihole-suite.service
     
-<<<<<<< HEAD
     success "Python suite installed and started"
     log "API Key: $api_key"
 }
@@ -735,7 +697,6 @@ main() {
     
     check_system
     check_ports
-=======
     log_success "Python suite installed and running"
 }
 
@@ -789,9 +750,7 @@ run_health_checks() {
 # Display summary
 show_summary() {
     echo
-    echo "=============================================="
     echo "        Installation Complete!"
-    echo "=============================================="
     echo
     echo "🔧 Components installed:"
     echo "  • Unbound DNS resolver: 127.0.0.1:$UNBOUND_PORT"
@@ -828,7 +787,6 @@ show_summary() {
 # Main installation function
 main() {
     echo "Pi-hole + Unbound + NetAlertX + Python Suite Installer"
-    echo "======================================================"
     echo
     
     check_privileges
@@ -837,13 +795,11 @@ main() {
     
     log_info "Starting installation..."
     
->>>>>>> origin/main
     install_packages
     configure_unbound
     install_pihole
     install_netalertx
     setup_python_suite
-<<<<<<< HEAD
     run_health_checks
     show_summary
     
@@ -851,7 +807,6 @@ main() {
 }
 
 # Execute main function
-=======
     
     log_info "Running health checks..."
     run_health_checks
@@ -863,5 +818,4 @@ main() {
 }
 
 # Run main function
->>>>>>> origin/main
 main "$@"

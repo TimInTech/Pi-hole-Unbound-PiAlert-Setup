@@ -1,22 +1,18 @@
-<<<<<<< HEAD
 """Demo IP allocator worker - DEMO ONLY."""
 
 import logging
 import sqlite3
 import threading
 from typing import Optional
-=======
 """Placeholder IP allocator worker."""
 import logging
 import threading
 import time
->>>>>>> origin/main
 
 from .allocator import IPPool
 
 logger = logging.getLogger(__name__)
 
-<<<<<<< HEAD
 # Global state
 _pool: Optional[IPPool] = None
 _stop_event = threading.Event()
@@ -105,7 +101,6 @@ def stop() -> None:
 def get_pool() -> Optional[IPPool]:
     """Get the current IP pool instance (for demo/testing)."""
     return _pool
-=======
 _pool = None
 _stop_event = threading.Event()
 
@@ -128,4 +123,3 @@ def _run() -> None:
 
 def stop() -> None:
     _stop_event.set()
->>>>>>> origin/main
