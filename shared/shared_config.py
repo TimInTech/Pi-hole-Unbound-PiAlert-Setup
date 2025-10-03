@@ -1,6 +1,4 @@
 """Shared configuration for the Pi-hole suite."""
-
-"""
 import logging
 import os
 from pathlib import Path

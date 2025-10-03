@@ -22,12 +22,12 @@
 
 ## ✨ Features
 
-✅ **Ein-Klick-Installation** - Setup mit einem Befehl  
-✅ **DNS-Sicherheit** - Pi-hole + Unbound mit DNSSEC  
-✅ **Netzwerk-Monitoring** - NetAlertX Geräte-Tracking  
-✅ **API-Monitoring** - Python FastAPI + SQLite  
-✅ **Produktionsbereit** - Systemd-Hardening & Auto-Restart  
-✅ **Idempotent** - Sicher mehrfach ausführbar  
+✅ **Ein-Klick-Installation** – Setup mit einem Befehl  
+✅ **DNS-Sicherheit** – Pi-hole + Unbound mit DNSSEC  
+✅ **Netzwerk-Monitoring** – NetAlertX Geräte-Tracking  
+✅ **API-Monitoring** – Python FastAPI + SQLite  
+✅ **Produktionsbereit** – Systemd-Hardening & Auto-Restart  
+✅ **Idempotent** – Sicher mehrfach ausführbar  
 
 ---
 
@@ -38,7 +38,7 @@ git clone https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup.git
 cd Pi-hole-Unbound-PiAlert-Setup
 chmod +x install.sh
 sudo ./install.sh
-```
+````
 
 **Fertig!** 🎉 Ihr kompletter DNS-Sicherheits-Stack läuft jetzt.
 
@@ -46,12 +46,12 @@ sudo ./install.sh
 
 ## 🧰 Was installiert wird
 
-| Komponente | Zweck | Zugriff |
-|------------|-------|---------|
-| **🕳️ Pi-hole** | DNS-Werbeblocker & Web-UI | `http://[ihre-ip]/admin` |
-| **🔐 Unbound** | Rekursiver DNS + DNSSEC | `127.0.0.1:5335` |
-| **📡 NetAlertX** | Netzwerkgeräte-Monitoring | `http://[ihre-ip]:20211` |
-| **🐍 Python API** | Monitoring & Statistik-API | `http://127.0.0.1:8090` |
+| Komponente        | Zweck                             | Zugriff                  |
+| ----------------- | --------------------------------- | ------------------------ |
+| **🕳️ Pi-hole**   | DNS-Werbeblocker & Web-Oberfläche | `http://[ihre-ip]/admin` |
+| **🔐 Unbound**    | Rekursiver DNS + DNSSEC           | `127.0.0.1:5335`         |
+| **📡 NetAlertX**  | Netzwerkgeräte-Monitoring         | `http://[ihre-ip]:20211` |
+| **🐍 Python API** | Monitoring- & Statistik-API       | `http://127.0.0.1:8090`  |
 
 ---
 
@@ -77,6 +77,7 @@ sudo ./install.sh
 ```
 
 **Datenfluss:**
+
 1. **Clients** → Pi-hole (DNS-Filterung)
 2. **Pi-hole** → Unbound (rekursive Auflösung)
 3. **Unbound** → Root-Server (DNSSEC-Validierung)
@@ -87,15 +88,32 @@ sudo ./install.sh
 
 ## 🔌 API-Referenz
 
+#### `GET /leases`
+
+```json
+[
+  {
+    "ip": "192.168.1.101",
+    "mac": "aa:bb:cc:dd:ee:ff",
+    "hostname": "drucker",
+    "lease_start": "2024-12-21 10:00:00",
+    "lease_end": "2024-12-21 12:00:00"
+  }
+]
+```
+
 ### Authentifizierung
-Alle Endpunkte benötigen `X-API-Key`-Header:
+
+Alle Endpunkte benötigen den `X-API-Key`-Header:
+
 ```bash
-curl -H "X-API-Key: ihr-api-key" http://127.0.0.1:8090/endpoint
+curl -H "X-API-Key: $SUITE_API_KEY" http://127.0.0.1:8090/endpoint
 ```
 
 ### Endpunkte
 
 #### `GET /health`
+
 ```json
 {
   "ok": true,
@@ -105,6 +123,7 @@ curl -H "X-API-Key: ihr-api-key" http://127.0.0.1:8090/endpoint
 ```
 
 #### `GET /dns?limit=50`
+
 ```json
 [
   {
@@ -117,6 +136,7 @@ curl -H "X-API-Key: ihr-api-key" http://127.0.0.1:8090/endpoint
 ```
 
 #### `GET /devices`
+
 ```json
 [
   {
@@ -130,6 +150,7 @@ curl -H "X-API-Key: ihr-api-key" http://127.0.0.1:8090/endpoint
 ```
 
 #### `GET /stats`
+
 ```json
 {
   "total_dns_logs": 1250,
@@ -143,21 +164,24 @@ curl -H "X-API-Key: ihr-api-key" http://127.0.0.1:8090/endpoint
 ## 🛠️ Manuelle Schritte (Optional)
 
 ### Pi-hole-Konfiguration
-1. Admin-Interface aufrufen: `http://[ihre-ip]/admin`
+
+1. Admin-Oberfläche aufrufen: `http://[ihre-ip]/admin`
 2. **Einstellungen → DNS** navigieren
-3. **Custom upstream** prüfen: `127.0.0.1#5335`
-4. Geräte konfigurieren, um Pi-hole als DNS-Server zu verwenden
+3. **Custom Upstream** setzen: `127.0.0.1#5335`
+4. Geräte im Netzwerk konfigurieren, um Pi-hole als DNS-Server zu nutzen
 
 ### NetAlertX-Setup
-- Dashboard aufrufen: `http://[ihre-ip]:20211`
-- Scan-Zeitpläne und Benachrichtigungen konfigurieren
-- Netzwerk-Topologie und Geräteliste überprüfen
+
+* Dashboard aufrufen: `http://[ihre-ip]:20211`
+* Scan-Zeitpläne und Benachrichtigungen konfigurieren
+* Netzwerk-Topologie und Geräteliste prüfen
 
 ---
 
 ## 🧪 Gesundheitschecks & Problembehandlung
 
 ### Schneller Gesundheitscheck
+
 ```bash
 # Unbound testen
 dig @127.0.0.1 -p 5335 example.com
@@ -173,6 +197,7 @@ curl -H "X-API-Key: $SUITE_API_KEY" http://127.0.0.1:8090/health
 ```
 
 ### Service-Verwaltung
+
 ```bash
 # Services prüfen
 systemctl status pihole-suite unbound pihole-FTL
@@ -190,32 +215,35 @@ docker restart netalertx
 
 ### Häufige Probleme
 
-| Problem | Lösung |
-|---------|--------|
-| **Port 53 belegt** | `sudo systemctl stop systemd-resolved` |
-| **API-Key fehlt** | `.env`-Datei prüfen oder mit Installer neu generieren |
-| **Datenbankfehler** | `python scripts/bootstrap.py` ausführen |
-| **Unbound startet nicht** | `/etc/unbound/unbound.conf.d/pi-hole.conf` prüfen |
+| Problem                   | Lösung                                                                                       |
+| ------------------------- | -------------------------------------------------------------------------------------------- |
+| **Port 53 belegt**        | `sudo systemctl stop systemd-resolved` *(ggf. dauerhaft: disable + /etc/resolv.conf prüfen)* |
+| **API-Key fehlt**         | `.env`-Datei prüfen oder mit Installer neu generieren                                        |
+| **Datenbankfehler**       | `python scripts/bootstrap.py` ausführen                                                      |
+| **Unbound startet nicht** | `/etc/unbound/unbound.conf.d/pi-hole.conf` prüfen                                            |
 
 ---
 
 ## 🧯 Sicherheitshinweise
 
 ### 🔐 API-Sicherheit
-- **API-Keys** werden automatisch generiert (16-Byte Hex)
-- **CORS** nur für localhost aktiviert
-- **Authentifizierung** für alle Endpunkte erforderlich
+
+* **API-Keys** werden automatisch generiert (16-Byte Hex)
+* **CORS** nur für localhost aktiviert
+* **Authentifizierung** für alle Endpunkte erforderlich
 
 ### 🛡️ Systemd-Hardening
-- **NoNewPrivileges** verhindert Rechte-Eskalation
-- **ProtectSystem=strict** Schreibschutz für Dateisystem
-- **PrivateTmp** isolierte temporäre Verzeichnisse
-- **Memory-Limits** verhindern Ressourcen-Erschöpfung
+
+* `NoNewPrivileges` verhindert Rechte-Eskalation
+* `ProtectSystem=strict` schützt das Dateisystem
+* `PrivateTmp` isoliert temporäre Verzeichnisse
+* Speicherlimits verhindern Ressourcenüberlastung
 
 ### 🔒 Netzwerk-Sicherheit
-- **Unbound** nur auf localhost (nicht exponiert)
-- **DNS über TLS** zu Upstream-Resolvern
-- **DNSSEC**-Validierung aktiviert
+
+* **Unbound** lauscht nur auf `localhost`
+* DNS über TLS zu Upstream-Resolvern
+* DNSSEC-Validierung ist aktiviert
 
 ---
 
@@ -231,19 +259,19 @@ docker restart netalertx
 
 ## 📜 Lizenz
 
-Dieses Projekt ist unter der **MIT-Lizenz** lizenziert - siehe [LICENSE](LICENSE)-Datei.
+Dieses Projekt ist unter der **MIT-Lizenz** lizenziert – siehe [LICENSE](LICENSE)-Datei.
 
 ---
 
 ## 📈 Changelog
 
-Siehe [CHANGELOG.md](CHANGELOG.md) für Versionshistorie und Updates.
+Siehe [CHANGELOG.md](CHANGELOG.md) für Versionsverlauf und Updates.
 
 ---
 
 <div align="center">
 
-**Mit ❤️ für die Pi-hole-Community erstellt**
+**Mit ❤️ für die Pi-hole-Community entwickelt**
 
 [🐛 Bug melden](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/issues) •
 [✨ Feature anfordern](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/issues) •

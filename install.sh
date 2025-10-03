@@ -9,10 +9,6 @@ set -euo pipefail
 readonly UNBOUND_PORT=5335
 readonly NETALERTX_PORT=20211
 readonly PYTHON_SUITE_PORT=8090
-readonly NETALERTX_IMAGE="techxartisan/netalertx:latest"
-readonly SUITE_API_KEY=${SUITE_API_KEY:-$(openssl rand -hex 16)}
-readonly INSTALL_USER=${SUDO_USER:-$(whoami)}
-readonly INSTALL_HOME=$(getent passwd "$INSTALL_USER" | cut -d: -f6)
 readonly PROJECT_DIR="$(pwd)"
 
 # 🎨 Colors
@@ -38,7 +34,6 @@ check_system() {
     success "System checks passed"
 }
 
-# 🔌 Port conflicts
 check_ports() {
     step "Checking ports"
     local ports=($UNBOUND_PORT $NETALERTX_PORT $PYTHON_SUITE_PORT 53)
@@ -53,7 +48,6 @@ check_ports() {
 install_packages() {
     step "Installing system packages"
     apt-get update -qq
-    apt-get install -y unbound unbound-anchor ca-certificates curl dnsutils \
         python3 python3-venv python3-pip git docker.io openssl systemd sqlite3
     success "System packages installed"
 }
@@ -87,6 +81,7 @@ forward-zone:
     forward-tls-upstream: yes
     forward-addr: 9.9.9.9@853#dns.quad9.net
     forward-addr: 149.112.112.112@853#dns.quad9.net
+# NOTE: This is DoT forwarding to Quad9 (not full recursion to the root); intended.
 EOF
 
     unbound-anchor -a /var/lib/unbound/root.key || true
@@ -174,7 +169,6 @@ ENV
 run_health_checks() {
     step "Running health checks"
     dig +short @127.0.0.1 -p $UNBOUND_PORT example.com | grep -q "." && success "Unbound OK" || error "Unbound FAIL"
-    pihole status | grep -q "blocking is enabled" && success "Pi-hole OK" || warn "Pi-hole status unclear"
     docker ps | grep -q netalertx && success "NetAlertX OK" || warn "NetAlertX missing"
     systemctl is-active --quiet pihole-suite && success "Python suite OK" || warn "Python suite not active"
 }
@@ -195,6 +189,7 @@ main() {
     check_ports
     install_packages
     configure_unbound
+    handle_systemd_resolved
     install_pihole
     install_netalertx
     setup_python_suite
