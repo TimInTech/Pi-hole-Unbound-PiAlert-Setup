@@ -13,7 +13,7 @@ readonly NETALERTX_IMAGE="techxartisan/netalertx:latest"
 readonly SUITE_API_KEY=${SUITE_API_KEY:-$(openssl rand -hex 16)}
 readonly INSTALL_USER=${SUDO_USER:-$(whoami)}
 readonly INSTALL_HOME=$(getent passwd "$INSTALL_USER" | cut -d: -f6)
-readonly PROJECT_DIR="$INSTALL_HOME/Pi-hole-Unbound-PiAlert-Setup"
+readonly PROJECT_DIR="$(pwd)"
 
 # 🎨 Colors
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
@@ -159,7 +159,12 @@ PrivateTmp=yes
 WantedBy=multi-user.target
 EOF
 
-    echo "SUITE_API_KEY=$SUITE_API_KEY" > .env
+    cat > .env <<ENV
+SUITE_API_KEY=$SUITE_API_KEY
+SUITE_PORT=$PYTHON_SUITE_PORT
+SUITE_DATA_DIR=$PROJECT_DIR/data
+SUITE_LOG_LEVEL=${SUITE_LOG_LEVEL:-INFO}
+ENV
     systemctl daemon-reload
     systemctl enable --now pihole-suite.service
     success "Python suite running on :$PYTHON_SUITE_PORT"
