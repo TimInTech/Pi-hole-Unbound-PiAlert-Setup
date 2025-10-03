@@ -2,7 +2,6 @@
 set -o errexit
 set -o nounset
 set -o pipefail
-
 # =============================================
 # GLOBAL VARIABLES
 # =============================================
@@ -14,14 +13,12 @@ ENV_FILE="${SCRIPT_DIR}/.env"
 RESOLV_CONF="/etc/resolv.conf"
 RESOLV_CONF_BACKUP="/etc/resolv.conf.bak"
 FALLBACK_RESOLVERS=("1.1.1.1" "9.9.9.9")
-
 # Defaults (NOT readonly)
 CONTAINER_MODE=false
 DRY_RUN=false
 FORCE=false
 RESUME=false
 AUTO_REMOVE_CONFLICTS=false
-
 # Ports
 UNBOUND_PORT=5335
 PIHOLE_DNS_PORT=53
@@ -30,7 +27,6 @@ NETALERTX_PORT=20211
 PYTHON_SUITE_PORT=8090
 CONTAINER_PIHOLE_DNS_PORT=8053
 CONTAINER_PIHOLE_WEB_PORT=8080
-
 # =============================================
 # LOGGING
 # =============================================
@@ -38,7 +34,6 @@ log() { echo -e "[\033[34m$(date +"%H:%M:%S")\033[0m] $*" | tee -a "$LOG_FILE"; 
 log_success() { echo -e "[\033[34m$(date +"%H:%M:%S")\033[0m] \033[32m✓\033[0m $*" | tee -a "$LOG_FILE"; }
 log_error() { echo -e "[\033[34m$(date +"%H:%M:%S")\033[0m] \033[31m✗\033[0m $*" | tee -a "$LOG_FILE" "$ERROR_LOG"; }
 log_warning() { echo -e "[\033[34m$(date +"%H:%M:%S")\033[0m] \033[33m!\033[0m $*" | tee -a "$LOG_FILE"; }
-
 # =============================================
 # STATE MANAGEMENT
 # =============================================
@@ -56,9 +51,7 @@ EOF
   fi
   source "$STATE_FILE"
 }
-
 update_state() { sed -i "s/^$1=.*/$1=$2/" "$STATE_FILE"; source "$STATE_FILE"; }
-
 # =============================================
 # ARGUMENT PARSING
 # =============================================
@@ -75,7 +68,6 @@ parse_args() {
     shift
   done
 }
-
 # =============================================
 # SYSTEM CHECKS
 # =============================================
@@ -86,7 +78,6 @@ check_dependencies() {
   done
   [[ ${#missing[@]} -gt 0 ]] && { log_error "Missing: ${missing[*]}"; exit 1; }
 }
-
 handle_systemd_resolved() {
   if [[ -f /etc/os-release ]] && grep -q "ubuntu" /etc/os-release; then
     if systemctl is-active --quiet systemd-resolved 2>/dev/null; then
@@ -97,12 +88,8 @@ handle_systemd_resolved() {
       echo "nameserver 1.1.1.1" | sudo tee "$RESOLV_CONF" >/dev/null
     fi
   fi
-}
-
-check_ports() {
   local ports=($UNBOUND_PORT $NETALERTX_PORT $PYTHON_SUITE_PORT 53)
   [[ "$CONTAINER_MODE" == true ]] && ports+=($CONTAINER_PIHOLE_DNS_PORT $CONTAINER_PIHOLE_WEB_PORT)
-
   for port in "${ports[@]}"; do
     if command -v ss &>/dev/null && ss -tuln | grep -q ":$port "; then
       log_error "Port $port in use"
@@ -112,8 +99,6 @@ check_ports() {
       return 1
     fi
   done
-}
-
 # =============================================
 # DOCKER SERVICE MANAGEMENT
 # =============================================
@@ -145,20 +130,16 @@ ensure_docker_service() {
     log "✅ Docker service already running"
   fi
 }
-install_packages() {
   [[ "$PACKAGES_OK" == true && "$FORCE" != true ]] && { log "✅ Packages OK"; return; }
-
   local packages=(
     unbound unbound-host ca-certificates curl dnsutils iproute2
     python3 python3-venv python3-pip git openssl sqlite3 docker.io
   )
-
   log "Installing packages..."
   sudo apt-get update -qq
   [[ "$AUTO_REMOVE_CONFLICTS" == true ]] && {
     sudo apt-get remove -y containerd.io docker-ce docker-ce-cli || true
   }
-
   for attempt in {1..3}; do
     if ! $DRY_RUN; then
       sudo DEBIAN_FRONTEND=noninteractive apt-get install -y "${packages[@]}" && {
@@ -175,14 +156,10 @@ install_packages() {
   done
   log_error "Failed to install packages"
   exit 1
-}
-
 # =============================================
 # UNBOUND CONFIGURATION
 # =============================================
-configure_unbound() {
   [[ "$UNBOUND_OK" == true && "$FORCE" != true ]] && { log "✅ Unbound OK"; return; }
-
   log "Configuring Unbound DNS with DoT (DNS-over-TLS)..."
   if ! $DRY_RUN; then
     # Create Unbound directories
@@ -203,13 +180,9 @@ configure_unbound() {
       log_error "TLS certificate bundle missing at /etc/ssl/certs/ca-certificates.crt"
       exit 1
     fi
-
     # Create comprehensive Unbound configuration
     sudo bash -c 'cat > /etc/unbound/unbound.conf.d/forward.conf' <<EOF
-server:
     # Network interface and port
-    interface: 127.0.0.1
-    port: $UNBOUND_PORT
     
     # TLS configuration for DNS-over-TLS
     tls-cert-bundle: /etc/ssl/certs/ca-certificates.crt
@@ -219,10 +192,7 @@ server:
     root-hints: /var/lib/unbound/root.hints
     
     # Protocol support
-    do-ip4: yes
     do-ip6: no
-    do-udp: yes
-    do-tcp: yes
     
     # Access control
     access-control: 127.0.0.0/8 allow
@@ -231,34 +201,21 @@ server:
     access-control: 192.168.0.0/16 allow
     
     # Privacy and security
-    hide-identity: yes
-    hide-version: yes
-    harden-glue: yes
-    harden-dnssec-stripped: yes
     harden-below-nxdomain: yes
     harden-referral-path: yes
     
     # Performance
     cache-min-ttl: 3600
-    cache-max-ttl: 86400
     prefetch: yes
     
     # Logging (disable for production)
     verbosity: 1
     log-queries: no
-
 # Forward zone for DNS-over-TLS to Quad9
-forward-zone:
-    name: "."
-    forward-tls-upstream: yes
     # Primary Quad9 DoT servers
-    forward-addr: 9.9.9.9@853#dns.quad9.net
-    forward-addr: 149.112.112.112@853#dns.quad9.net
     # Backup Cloudflare DoT servers
     forward-addr: 1.1.1.1@853#cloudflare-dns.com
     forward-addr: 1.0.0.1@853#cloudflare-dns.com
-EOF
-
     # Restart and verify Unbound service
     sudo systemctl restart unbound || { log_error "Failed to restart Unbound"; exit 1; }
     sleep 3
@@ -287,21 +244,17 @@ EOF
     log "DRY RUN: Would configure Unbound with DoT, root.hints, trust anchors, and TLS certificates"
     update_state UNBOUND_OK true
   fi
-}
-
 # =============================================
 # PI-HOLE SETUP
 # =============================================
 setup_pihole() {
   [[ "$PIHOLE_OK" == true && "$FORCE" != true ]] && { log "✅ Pi-hole OK"; return; }
-
   if [[ "$CONTAINER_MODE" == true ]]; then
     setup_pihole_container
   else
     setup_pihole_host
   fi
 }
-
 setup_pihole_host() {
   if ! $DRY_RUN; then
     if ! command -v pihole &>/dev/null; then
@@ -309,7 +262,6 @@ setup_pihole_host() {
         PIHOLE_INSTALL_AUTO=true DNS1=127.0.0.1#$UNBOUND_PORT DNS2=no bash || {
         log_error "Pi-hole install failed"; exit 1;
       }
-    fi
     sudo sed -i "s/^PIHOLE_DNS_1=.*/PIHOLE_DNS_1=127.0.0.1#$UNBOUND_PORT/" /etc/pihole/setupVars.conf
     sudo sed -i "s/^PIHOLE_DNS_2=.*/PIHOLE_DNS_2=/" /etc/pihole/setupVars.conf
     sudo pihole restartdns
@@ -321,7 +273,6 @@ setup_pihole_host() {
     update_state PIHOLE_OK true
   fi
 }
-
 setup_pihole_container() {
   if ! $DRY_RUN; then
     ensure_docker_service
@@ -355,14 +306,11 @@ setup_pihole_container() {
     log "DRY RUN: Would create Pi-hole container with host networking"
     update_state PIHOLE_OK true
   fi
-}
-
 # =============================================
 # NETALERTX SETUP
 # =============================================
 setup_netalertx() {
   [[ "$NETALERTX_OK" == true && "$FORCE" != true ]] && { log "✅ NetAlertX OK"; return; }
-
   if ! $DRY_RUN; then
     ensure_docker_service
     
@@ -398,26 +346,20 @@ setup_netalertx() {
     log "DRY RUN: Would create NetAlertX container on port $NETALERTX_PORT"
     update_state NETALERTX_OK true
   fi
-}
-
 # =============================================
 # PYTHON SUITE SETUP
 # =============================================
-setup_python_suite() {
   [[ "$PY_SUITE_OK" == true && "$FORCE" != true ]] && { log "✅ Python Suite OK"; return; }
-
   if ! $DRY_RUN; then
     mkdir -p "$SCRIPT_DIR/data"
     if [[ ! -f "$ENV_FILE" ]] || ! grep -q '^SUITE_API_KEY=' "$ENV_FILE"; then
       echo "SUITE_API_KEY=$(openssl rand -hex 16)" > "$ENV_FILE"
       echo "SUITE_PORT=$PYTHON_SUITE_PORT" >> "$ENV_FILE"
     fi
-
     [[ ! -d "$SCRIPT_DIR/venv" ]] && python3 -m venv "$SCRIPT_DIR/venv"
     "$SCRIPT_DIR/venv/bin/pip" install -r "$SCRIPT_DIR/requirements.txt" || {
       log_error "Python requirements failed"; exit 1;
     }
-
     if [[ "$CONTAINER_MODE" == false ]]; then
       cat > /tmp/pihole-suite.service <<EOF
 [Unit]
@@ -431,9 +373,6 @@ ExecStart=$SCRIPT_DIR/venv/bin/python $SCRIPT_DIR/start_suite.py
 Restart=always
 PrivateTmp=true
 ProtectSystem=full
-[Install]
-WantedBy=multi-user.target
-EOF
       sudo mv /tmp/pihole-suite.service /etc/systemd/system/
       sudo systemctl daemon-reload
       sudo systemctl enable --now pihole-suite.service
@@ -444,22 +383,17 @@ EOF
     log "DRY RUN: Would set up Python Suite"
     update_state PY_SUITE_OK true
   fi
-}
-
 # =============================================
 # HEALTH CHECKS
 # =============================================
 run_healthchecks() {
   [[ "$HEALTH_OK" == true && "$FORCE" != true ]] && { log "✅ Health OK"; return; }
-
   local all_healthy=true
-
   # Unbound
   if ! dig +short @127.0.0.1 -p $UNBOUND_PORT example.com | grep -qE '^[0-9.]+$'; then
     log_error "Unbound failed"
     all_healthy=false
   fi
-
   # Pi-hole
   if [[ "$CONTAINER_MODE" == true ]]; then
     sudo docker ps | grep -q pihole || { log_error "Pi-hole container missing"; all_healthy=false; }
@@ -470,15 +404,12 @@ run_healthchecks() {
     done
     systemctl is-active --quiet pihole-FTL 2>/dev/null || { log_error "Pi-hole service missing"; all_healthy=false; }
   fi
-
   # NetAlertX
   sudo docker ps | grep -q netalertx || { log_error "NetAlertX missing"; all_healthy=false; }
-
   # Python Suite (Host Mode)
   [[ "$CONTAINER_MODE" == false ]] && {
     systemctl is-active --quiet pihole-suite 2>/dev/null || { log_error "Python Suite missing"; all_healthy=false; }
   }
-
   if [[ "$all_healthy" == true ]]; then
     log_success "All health checks passed"
     update_state HEALTH_OK true
@@ -486,12 +417,9 @@ run_healthchecks() {
     log_error "Some health checks failed"
     exit 1
   fi
-}
-
 # =============================================
 # MAIN
 # =============================================
-main() {
   parse_args "$@"
   init_state
   check_dependencies
@@ -503,7 +431,6 @@ main() {
   setup_netalertx
   setup_python_suite
   run_healthchecks
-
   log_success "🎉 Installation complete!"
   echo ""
   echo "┌─────────────────────────────────────────────────────────────────┐"
@@ -525,6 +452,3 @@ main() {
   echo "  1. Configure your router to use $(hostname -I | awk '{print $1}') as DNS"
   echo "  2. Test with: dig @$(hostname -I | awk '{print $1}') google.com"
   echo "  3. Monitor with: ./check.sh"
-}
-
-main "$@"
