@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 """SQLite database initialization and helpers."""
 
 import logging
@@ -61,7 +60,6 @@ CREATE TABLE IF NOT EXISTS system_stats (
 );
 CREATE INDEX IF NOT EXISTS idx_stats_timestamp ON system_stats(timestamp);
 CREATE INDEX IF NOT EXISTS idx_stats_metric ON system_stats(metric_name);
-=======
 """SQLite helpers for the Pi-hole suite."""
 import sqlite3
 from pathlib import Path
@@ -95,12 +93,10 @@ CREATE TABLE IF NOT EXISTS devices(
   last_seen TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_devices_ip ON devices(ip);
->>>>>>> origin/main
 """
 
 
 def init_db() -> sqlite3.Connection:
-<<<<<<< HEAD
     """Initialize the SQLite database with schema."""
     try:
         # Ensure parent directory exists
@@ -124,10 +120,8 @@ def get_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     return conn
-=======
     Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.executescript(SCHEMA)
     conn.commit()
     return conn
->>>>>>> origin/main

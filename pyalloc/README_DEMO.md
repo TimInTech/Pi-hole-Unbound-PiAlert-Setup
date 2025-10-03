@@ -1,6 +1,5 @@
 # PyAlloc - Demo IP Allocator
 
-<<<<<<< HEAD
 ⚠️ **This is a DEMO component only** ⚠️
 
 This directory contains a simple IP address allocator that serves as a proof-of-concept. It is **disabled by default** and not required for the main Pi-hole + Unbound + NetAlertX installation.
@@ -32,7 +31,6 @@ For production environments, consider using proper DHCP management tools:
 - Router/firewall DHCP services
 
 This demo allocator is **not suitable for production use**.
-=======
 ⚠️ **This is a demonstration component only** ⚠️
 
 This directory contains a simple IP address allocator that was created as a proof-of-concept. It is **not required** for the main Pi-hole + Unbound + NetAlertX installation.
@@ -54,4 +52,3 @@ The pyalloc component is automatically disabled in the one-click installer. If y
 ## For production use
 
 For production environments, consider using proper DHCP management tools or network management systems instead of this demo allocator.
->>>>>>> origin/main

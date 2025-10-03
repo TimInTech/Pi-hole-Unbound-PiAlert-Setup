@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Entry point for the Pi-hole monitoring suite."""
-<<<<<<< HEAD
 
 import asyncio
 import logging
@@ -51,7 +50,6 @@ async def run_api() -> None:
         log_level="info",
         access_log=True
     )
-=======
 import asyncio
 import os
 import threading
@@ -71,13 +69,11 @@ if ENABLE_PYALLOC_DEMO:
 
 async def run_api() -> None:
     config = uvicorn.Config(api_app, host="127.0.0.1", port=8090, log_level="info")
->>>>>>> origin/main
     server = uvicorn.Server(config)
     await server.serve()
 
 
 def main() -> None:
-<<<<<<< HEAD
     """Main application entry point."""
     logger.info("Starting Pi-hole Suite...")
     
@@ -125,7 +121,6 @@ def main() -> None:
     
     logger.info(f"API Key: {api_key[:8]}...")
     logger.info("Starting API server...")
-=======
 
     conn = init_db()
     
@@ -138,12 +133,10 @@ def main() -> None:
         print("✓ Started with pyalloc demo component")
     else:
         print("✓ Started in production mode (pyalloc demo disabled)")
->>>>>>> origin/main
     
     try:
         asyncio.run(run_api())
     except KeyboardInterrupt:
-<<<<<<< HEAD
         logger.info("Shutting down...")
     except Exception as e:
         logger.error(f"Application error: {e}")
@@ -152,10 +145,8 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-=======
         print("Shutting down…")
 
 
 if __name__ == "__main__":
     main()
->>>>>>> origin/main

@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 """FastAPI app for Pi-hole suite monitoring and management."""
 
 import os
@@ -49,7 +48,6 @@ app.add_middleware(
 
 def get_api_key() -> str:
     """Get configured API key."""
-=======
 """FastAPI app exposing Pi-hole suite data."""
 import os
 import sqlite3
@@ -57,15 +55,11 @@ import sqlite3
 
 
 def _get_api_key() -> str:
->>>>>>> origin/main
     return os.getenv("SUITE_API_KEY", "")
 
 
 def get_db() -> Generator[sqlite3.Connection, None, None]:
-<<<<<<< HEAD
     """Database dependency."""
-=======
->>>>>>> origin/main
     conn = sqlite3.connect(config.DB_PATH)
     conn.row_factory = sqlite3.Row
     try:
@@ -74,7 +68,6 @@ def get_db() -> Generator[sqlite3.Connection, None, None]:
         conn.close()
 
 
-<<<<<<< HEAD
 def require_api_key(x_api_key: Optional[str] = Header(None)) -> None:
     """Require valid API key for authentication."""
     api_key = get_api_key()
@@ -194,7 +187,6 @@ def get_stats(db: sqlite3.Connection = Depends(get_db)) -> StatsResponse:
         total_devices=device_count,
         recent_queries=recent_queries
     )
-=======
 
         
     cur = db.execute(
@@ -211,4 +203,3 @@ def get_ip_leases(db=Depends(get_db)):
 
 
 
->>>>>>> origin/main
