@@ -575,20 +575,40 @@ main() {
   echo "│                    🚀 INSTALLATION COMPLETE 🚀                   │"
   echo "├─────────────────────────────────────────────────────────────────┤"
   echo "│ Services Status:                                                │"
+  
+  # Get IP address safely
+  local host_ip
+  host_ip="$(hostname -I 2>/dev/null | awk '{print $1}' || echo '127.0.0.1')"
+  
   echo "│  • Unbound DNS:     http://127.0.0.1:$UNBOUND_PORT                         │"
-  echo "│  • Pi-hole Admin:   http://$(hostname -I | awk '{print $1}')${CONTAINER_MODE:+:$CONTAINER_PIHOLE_WEB_PORT}           │"
-  echo "│  • NetAlertX:       http://$(hostname -I | awk '{print $1}'):$NETALERTX_PORT              │"
+  if [[ "$CONTAINER_MODE" == true ]]; then
+    echo "│  • Pi-hole Admin:   http://${host_ip}:$CONTAINER_PIHOLE_WEB_PORT           │"
+  else
+    echo "│  • Pi-hole Admin:   http://${host_ip}                                      │"
+  fi
+  echo "│  • NetAlertX:       http://${host_ip}:$NETALERTX_PORT              │"
   echo "│  • Python Suite:   http://127.0.0.1:$PYTHON_SUITE_PORT                      │"
   echo "├─────────────────────────────────────────────────────────────────┤"
   echo "│ Configuration:                                                  │"
-  echo "│  • API Key: $(grep SUITE_API_KEY "$ENV_FILE" 2>/dev/null | cut -d= -f2 | head -c20)...     │"
-  echo "│  • Mode: ${CONTAINER_MODE:+Container}${CONTAINER_MODE:+Mode}${CONTAINER_MODE:-Host Mode}                               │"
+  
+  # Get API key safely
+  local api_key_preview="<not_set>"
+  if [[ -f "$ENV_FILE" ]]; then
+    api_key_preview="$(grep SUITE_API_KEY "$ENV_FILE" 2>/dev/null | cut -d= -f2 | head -c20 || echo '<not_set>')"
+  fi
+  
+  echo "│  • API Key: ${api_key_preview}...     │"
+  if [[ "$CONTAINER_MODE" == true ]]; then
+    echo "│  • Mode: Container Mode                                         │"
+  else
+    echo "│  • Mode: Host Mode                                              │"
+  fi
   echo "│  • DNS: 127.0.0.1 (Pi-hole → Unbound → DoT)                    │"
   echo "└─────────────────────────────────────────────────────────────────┘"
   echo ""
   echo "Next steps:"
-  echo "  1. Configure your router to use $(hostname -I | awk '{print $1}') as DNS"
-  echo "  2. Test with: dig @$(hostname -I | awk '{print $1}') google.com"
+  echo "  1. Configure your router to use ${host_ip} as DNS"
+  echo "  2. Test with: dig @${host_ip} google.com"
   echo "  3. Monitor with: ./check.sh"
 }
 
