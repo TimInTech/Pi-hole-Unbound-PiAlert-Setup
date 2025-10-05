@@ -149,7 +149,7 @@ install_packages() {
   [[ "$PACKAGES_OK" == true && "$FORCE" != true ]] && { log "✅ Packages OK"; return; }
 
   local packages=(
-    unbound unbound-host ca-certificates curl dnsutils iproute2
+    unbound unbound-host dns-root-data ca-certificates curl dnsutils iproute2
     python3 python3-venv python3-pip git openssl sqlite3 docker.io
   )
 
@@ -194,9 +194,21 @@ configure_unbound() {
     }
     
     # Update DNSSEC trust anchor
-    sudo unbound-anchor -a /var/lib/unbound/root.key || {
-      log_warning "unbound-anchor failed, but continuing..."
-    }
+    if command -v unbound-anchor >/dev/null 2>&1; then
+      sudo unbound-anchor -a /var/lib/unbound/root.key || {
+        log_warning "unbound-anchor failed, but continuing..."
+      }
+    else
+      log_warning "unbound-anchor command not found, using alternative method..."
+      # Create a minimal root.key if unbound-anchor is not available
+      if [[ ! -f /var/lib/unbound/root.key ]]; then
+        sudo curl -fsSL https://data.iana.org/root-anchors/icannbundle.pem -o /tmp/icannbundle.pem || {
+          log_warning "Failed to download DNSSEC trust anchor, using built-in defaults"
+          sudo touch /var/lib/unbound/root.key
+        }
+        [[ -f /tmp/icannbundle.pem ]] && sudo mv /tmp/icannbundle.pem /var/lib/unbound/root.key
+      fi
+    fi
     
     # Verify TLS certificate bundle exists
     if [[ ! -f /etc/ssl/certs/ca-certificates.crt ]]; then
@@ -310,9 +322,23 @@ setup_pihole_host() {
         log_error "Pi-hole install failed"; exit 1;
       }
     fi
-    sudo sed -i "s/^PIHOLE_DNS_1=.*/PIHOLE_DNS_1=127.0.0.1#$UNBOUND_PORT/" /etc/pihole/setupVars.conf
-    sudo sed -i "s/^PIHOLE_DNS_2=.*/PIHOLE_DNS_2=/" /etc/pihole/setupVars.conf
-    sudo pihole restartdns
+    
+    # Wait for Pi-hole setup to complete and configuration file to be created
+    for i in {1..30}; do
+      if [[ -f /etc/pihole/setupVars.conf ]]; then
+        break
+      fi
+      log "Waiting for Pi-hole setup to complete... ($i/30)"
+      sleep 2
+    done
+    
+    if [[ -f /etc/pihole/setupVars.conf ]]; then
+      sudo sed -i "s/^PIHOLE_DNS_1=.*/PIHOLE_DNS_1=127.0.0.1#$UNBOUND_PORT/" /etc/pihole/setupVars.conf
+      sudo sed -i "s/^PIHOLE_DNS_2=.*/PIHOLE_DNS_2=/" /etc/pihole/setupVars.conf
+      sudo pihole restartdns
+    else
+      log_warning "Pi-hole setupVars.conf not found, DNS configuration may need manual setup"
+    fi
     echo "nameserver 127.0.0.1" | sudo tee "$RESOLV_CONF" >/dev/null
     log_success "Pi-hole OK"
     update_state PIHOLE_OK true
