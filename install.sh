@@ -255,6 +255,9 @@ configure_unbound() {
       exit 1
     fi
 
+    # Create Unbound configuration directory if missing
+    sudo mkdir -p /etc/unbound/unbound.conf.d
+
     # Create comprehensive Unbound configuration
     sudo bash -c 'cat > /etc/unbound/unbound.conf.d/forward.conf' <<EOF
 server:
