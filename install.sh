@@ -34,10 +34,35 @@ CONTAINER_PIHOLE_WEB_PORT=8080
 # =============================================
 # LOGGING
 # =============================================
-log() { echo -e "[\033[34m$(date +"%H:%M:%S")\033[0m] $*" | tee -a "$LOG_FILE"; }
-log_success() { echo -e "[\033[34m$(date +"%H:%M:%S")\033[0m] \033[32m✓\033[0m $*" | tee -a "$LOG_FILE"; }
-log_error() { echo -e "[\033[34m$(date +"%H:%M:%S")\033[0m] \033[31m✗\033[0m $*" | tee -a "$LOG_FILE" "$ERROR_LOG"; }
-log_warning() { echo -e "[\033[34m$(date +"%H:%M:%S")\033[0m] \033[33m!\033[0m $*" | tee -a "$LOG_FILE"; }
+log() { 
+  local msg="[\033[34m$(date +"%H:%M:%S")\033[0m] $*"
+  echo -e "$msg"
+  if [[ -w "$(dirname "$LOG_FILE")" ]]; then
+    echo -e "$msg" >> "$LOG_FILE" 2>/dev/null || true
+  fi
+}
+log_success() { 
+  local msg="[\033[34m$(date +"%H:%M:%S")\033[0m] \033[32m✓\033[0m $*"
+  echo -e "$msg"
+  if [[ -w "$(dirname "$LOG_FILE")" ]]; then
+    echo -e "$msg" >> "$LOG_FILE" 2>/dev/null || true
+  fi
+}
+log_error() { 
+  local msg="[\033[34m$(date +"%H:%M:%S")\033[0m] \033[31m✗\033[0m $*"
+  echo -e "$msg"
+  if [[ -w "$(dirname "$LOG_FILE")" ]]; then
+    echo -e "$msg" >> "$LOG_FILE" 2>/dev/null || true
+    echo -e "$msg" >> "$ERROR_LOG" 2>/dev/null || true
+  fi
+}
+log_warning() { 
+  local msg="[\033[34m$(date +"%H:%M:%S")\033[0m] \033[33m!\033[0m $*"
+  echo -e "$msg"
+  if [[ -w "$(dirname "$LOG_FILE")" ]]; then
+    echo -e "$msg" >> "$LOG_FILE" 2>/dev/null || true
+  fi
+}
 
 # =============================================
 # STATE MANAGEMENT
@@ -81,9 +106,15 @@ parse_args() {
 # =============================================
 check_dependencies() {
   local missing=()
-  for cmd in sudo curl openssl; do
+  for cmd in curl openssl; do
     command -v "$cmd" >/dev/null || missing+=("$cmd")
   done
+  
+  # Only check for sudo if not running in dry-run mode
+  if [[ "$DRY_RUN" != true ]]; then
+    command -v sudo >/dev/null || missing+=("sudo")
+  fi
+  
   [[ ${#missing[@]} -gt 0 ]] && { log_error "Missing: ${missing[*]}"; exit 1; }
 }
 
@@ -149,7 +180,7 @@ install_packages() {
   [[ "$PACKAGES_OK" == true && "$FORCE" != true ]] && { log "✅ Packages OK"; return; }
 
   local packages=(
-    unbound unbound-host dns-root-data ca-certificates curl dnsutils iproute2
+    unbound unbound-host unbound-anchor dns-root-data ca-certificates curl dnsutils iproute2
     python3 python3-venv python3-pip git openssl sqlite3 docker.io
   )
 
