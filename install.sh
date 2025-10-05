@@ -232,22 +232,9 @@ configure_unbound() {
       log_error "Failed to download root.hints"; exit 1;
     }
     
-    # Update DNSSEC trust anchor
-    if command -v unbound-anchor >/dev/null 2>&1; then
-      sudo unbound-anchor -a /var/lib/unbound/root.key || {
-        log_warning "unbound-anchor failed, but continuing..."
-      }
-    else
-      log_warning "unbound-anchor command not found, using alternative method..."
-      # Create a minimal root.key if unbound-anchor is not available
-      if [[ ! -f /var/lib/unbound/root.key ]]; then
-        sudo curl -fsSL https://data.iana.org/root-anchors/icannbundle.pem -o /tmp/icannbundle.pem || {
-          log_warning "Failed to download DNSSEC trust anchor, using built-in defaults"
-          sudo touch /var/lib/unbound/root.key
-        }
-        [[ -f /tmp/icannbundle.pem ]] && sudo mv /tmp/icannbundle.pem /var/lib/unbound/root.key
-      fi
-    fi
+    # Update DNSSEC trust anchor (hard requirement)
+    command -v unbound-anchor >/dev/null 2>&1 || { log_error "unbound-anchor missing"; exit 1; }
+    sudo unbound-anchor -a /var/lib/unbound/root.key || { log_error "unbound-anchor failed"; exit 1; }
     
     # Verify TLS certificate bundle exists
     if [[ ! -f /etc/ssl/certs/ca-certificates.crt ]]; then
@@ -268,8 +255,7 @@ server:
     # TLS configuration for DNS-over-TLS
     tls-cert-bundle: /etc/ssl/certs/ca-certificates.crt
     
-    # DNSSEC validation
-    trust-anchor-file: /var/lib/unbound/root.key
+    # DNSSEC validation: Ubuntu bringt auto-trust-anchor-file als Drop-in
     root-hints: /var/lib/unbound/root.hints
     
     # Protocol support
@@ -312,6 +298,18 @@ forward-zone:
     forward-addr: 1.1.1.1@853#cloudflare-dns.com
     forward-addr: 1.0.0.1@853#cloudflare-dns.com
 EOF
+
+    # Remove duplicate trust anchor directives if Ubuntu drop-in exists
+    if [[ -f /etc/unbound/unbound.conf.d/root-auto-trust-anchor-file.conf ]]; then
+      sudo sed -i '/^\s*trust-anchor-file:/d' /etc/unbound/unbound.conf.d/forward.conf || true
+      log "Ubuntu auto-trust-anchor detected, removed duplicate trust-anchor-file directive"
+    fi
+
+    # Validate configuration before restart
+    if ! sudo unbound-checkconf; then
+      log_error "Unbound configuration validation failed"
+      exit 1
+    fi
 
     # Restart and verify Unbound service
     sudo systemctl restart unbound || { log_error "Failed to restart Unbound"; exit 1; }
