@@ -115,7 +115,10 @@ check_dependencies() {
     command -v sudo >/dev/null || missing+=("sudo")
   fi
   
-  [[ ${#missing[@]} -gt 0 ]] && { log_error "Missing: ${missing[*]}"; exit 1; }
+  if [[ ${#missing[@]} -gt 0 ]]; then 
+    log_error "Missing: ${missing[*]}"
+    exit 1
+  fi
 }
 
 handle_systemd_resolved() {
@@ -131,6 +134,11 @@ handle_systemd_resolved() {
 }
 
 check_ports() {
+  if [[ "$DRY_RUN" == true ]]; then
+    log "DRY RUN: Would check ports $UNBOUND_PORT, $NETALERTX_PORT, $PYTHON_SUITE_PORT, 53"
+    return 0
+  fi
+  
   local ports=($UNBOUND_PORT $NETALERTX_PORT $PYTHON_SUITE_PORT 53)
   [[ "$CONTAINER_MODE" == true ]] && ports+=($CONTAINER_PIHOLE_DNS_PORT $CONTAINER_PIHOLE_WEB_PORT)
 
