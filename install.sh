@@ -21,6 +21,8 @@ DRY_RUN=false
 FORCE=false
 RESUME=false
 AUTO_REMOVE_CONFLICTS=false
+INSTALL_NETALERTX=true
+INSTALL_PYTHON_SUITE=true
 
 # Ports
 UNBOUND_PORT=5335
@@ -95,6 +97,9 @@ parse_args() {
       --force) FORCE=true ;;
       --resume) RESUME=true ;;
       --auto-remove-conflicts) AUTO_REMOVE_CONFLICTS=true ;;
+      --skip-netalertx) INSTALL_NETALERTX=false ;;
+      --skip-python-api) INSTALL_PYTHON_SUITE=false ;;
+      --minimal) INSTALL_NETALERTX=false; INSTALL_PYTHON_SUITE=false ;;
       *) log_error "Unknown option: $1"; exit 1 ;;
     esac
     shift
@@ -139,7 +144,9 @@ check_ports() {
     return 0
   fi
   
-  local ports=($UNBOUND_PORT $NETALERTX_PORT $PYTHON_SUITE_PORT 53)
+  local ports=($UNBOUND_PORT 53)
+  [[ "$INSTALL_NETALERTX" == true ]] && ports+=($NETALERTX_PORT)
+  [[ "$INSTALL_PYTHON_SUITE" == true ]] && ports+=($PYTHON_SUITE_PORT)
   [[ "$CONTAINER_MODE" == true ]] && ports+=($CONTAINER_PIHOLE_DNS_PORT $CONTAINER_PIHOLE_WEB_PORT)
 
   for port in "${ports[@]}"; do
@@ -537,13 +544,15 @@ run_healthchecks() {
     systemctl is-active --quiet pihole-FTL 2>/dev/null || { log_error "Pi-hole service missing"; all_healthy=false; }
   fi
 
-  # NetAlertX
-  sudo docker ps | grep -q netalertx || { log_error "NetAlertX missing"; all_healthy=false; }
+  # NetAlertX (only if installed)
+  if [[ "$INSTALL_NETALERTX" == true ]]; then
+    sudo docker ps | grep -q netalertx || { log_error "NetAlertX missing"; all_healthy=false; }
+  fi
 
-  # Python Suite (Host Mode)
-  [[ "$CONTAINER_MODE" == false ]] && {
+  # Python Suite (Host Mode, only if installed)
+  if [[ "$CONTAINER_MODE" == false && "$INSTALL_PYTHON_SUITE" == true ]]; then
     systemctl is-active --quiet pihole-suite 2>/dev/null || { log_error "Python Suite missing"; all_healthy=false; }
-  }
+  fi
 
   if [[ "$all_healthy" == true ]]; then
     log_success "All health checks passed"
@@ -566,8 +575,23 @@ main() {
   install_packages
   configure_unbound
   setup_pihole
-  setup_netalertx
-  setup_python_suite
+  
+  # NetAlertX Setup (conditional)
+  if [[ "$INSTALL_NETALERTX" == true ]]; then
+    setup_netalertx
+  else
+    log "⏭️  Skipping NetAlertX installation (--skip-netalertx)"
+    update_state NETALERTX_OK true
+  fi
+  
+  # Python Suite Setup (conditional)
+  if [[ "$INSTALL_PYTHON_SUITE" == true ]]; then
+    setup_python_suite
+  else
+    log "⏭️  Skipping Python API Suite installation (--skip-python-api)"
+    update_state PY_SUITE_OK true
+  fi
+  
   run_healthchecks
 
   log_success "🎉 Installation complete!"
@@ -587,18 +611,32 @@ main() {
   else
     echo "│  • Pi-hole Admin:   http://${host_ip}                                      │"
   fi
-  echo "│  • NetAlertX:       http://${host_ip}:$NETALERTX_PORT              │"
-  echo "│  • Python Suite:   http://127.0.0.1:$PYTHON_SUITE_PORT                      │"
+  
+  if [[ "$INSTALL_NETALERTX" == true ]]; then
+    echo "│  • NetAlertX:       http://${host_ip}:$NETALERTX_PORT              │"
+  else
+    echo "│  • NetAlertX:       [SKIPPED]                                      │"
+  fi
+  
+  if [[ "$INSTALL_PYTHON_SUITE" == true ]]; then
+    echo "│  • Python Suite:   http://127.0.0.1:$PYTHON_SUITE_PORT                      │"
+  else
+    echo "│  • Python Suite:   [SKIPPED]                                       │"
+  fi
+  
   echo "├─────────────────────────────────────────────────────────────────┤"
   echo "│ Configuration:                                                  │"
   
   # Get API key safely
   local api_key_preview="<not_set>"
-  if [[ -f "$ENV_FILE" ]]; then
+  if [[ -f "$ENV_FILE" && "$INSTALL_PYTHON_SUITE" == true ]]; then
     api_key_preview="$(grep SUITE_API_KEY "$ENV_FILE" 2>/dev/null | cut -d= -f2 | head -c20 || echo '<not_set>')"
   fi
   
-  echo "│  • API Key: ${api_key_preview}...     │"
+  if [[ "$INSTALL_PYTHON_SUITE" == true ]]; then
+    echo "│  • API Key: ${api_key_preview}...     │"
+  fi
+  
   if [[ "$CONTAINER_MODE" == true ]]; then
     echo "│  • Mode: Container Mode                                         │"
   else
