@@ -1,7 +1,9 @@
+<!-- markdownlint-disable MD033 MD041 -->
 <div align="center">
 
 # 🛡️ Pi-hole + Unbound + NetAlertX
-### **One-Click DNS Security & Monitoring Stack**
+
+## **One-Click DNS Security & Monitoring Stack**
 
 [![Build Status](https://img.shields.io/github/actions/workflow/status/TimInTech/Pi-hole-Unbound-PiAlert-Setup/ci.yml?branch=main&style=for-the-badge&logo=github)](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/actions)
 [![License](https://img.shields.io/github/license/TimInTech/Pi-hole-Unbound-PiAlert-Setup?style=for-the-badge&color=blue)](LICENSE)
@@ -17,6 +19,7 @@
 **🌐 Languages:** 🇬🇧 English (this file) • [🇩🇪 Deutsch](README.de.md)
 
 </div>
+<!-- markdownlint-enable MD033 MD041 -->
 
 ---
 
@@ -63,7 +66,7 @@ sudo ./install.sh
 
 ## 🗺️ Architecture
 
-```
+```text
 ┌─────────────┐    ┌──────────────┐    ┌─────────────┐
 │   Clients   │───▶│   Pi-hole    │───▶│   Unbound   │
 │ 192.168.x.x │    │    :53       │    │   :5335     │
@@ -246,12 +249,14 @@ See [CHANGELOG.md](CHANGELOG.md) for history and updates.
 
 ---
 
+<!-- markdownlint-disable MD033 MD036 -->
 <div align="center">
 
-**Made with ❤️ for the Pi-hole community**
+### Made with ❤️ for the Pi-hole community
 
 [🐛 Report Bug](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/issues) •
 [✨ Request Feature](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/issues) •
 [💬 Discussions](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/discussions)
 
 </div>
+<!-- markdownlint-enable MD033 MD036 -->
