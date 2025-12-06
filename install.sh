@@ -13,22 +13,18 @@ STATE_FILE="${SCRIPT_DIR}/data/install.state"
 ENV_FILE="${SCRIPT_DIR}/.env"
 RESOLV_CONF="/etc/resolv.conf"
 RESOLV_CONF_BACKUP="/etc/resolv.conf.bak"
-FALLBACK_RESOLVERS=("1.1.1.1" "9.9.9.9")
 PIHOLE_TOML="/etc/pihole/pihole.toml"
 
 # Defaults (NOT readonly)
 CONTAINER_MODE=false
 DRY_RUN=false
 FORCE=false
-RESUME=false
 AUTO_REMOVE_CONFLICTS=false
 INSTALL_NETALERTX=true
 INSTALL_PYTHON_SUITE=true
 
 # Ports
 UNBOUND_PORT=5335
-PIHOLE_DNS_PORT=53
-PIHOLE_WEB_PORT=80
 NETALERTX_PORT=20211
 PYTHON_SUITE_PORT=8090
 CONTAINER_PIHOLE_DNS_PORT=8053
@@ -38,29 +34,33 @@ CONTAINER_PIHOLE_WEB_PORT=8080
 # LOGGING
 # =============================================
 log() { 
-  local msg="[\033[34m$(date +"%H:%M:%S")\033[0m] $*"
+  local msg
+  msg="[\033[34m$(date +"%H:%M:%S")\033[0m] $*"
   echo -e "$msg"
   if [[ -w "$(dirname "$LOG_FILE")" ]]; then
     echo -e "$msg" >> "$LOG_FILE" 2>/dev/null || true
   fi
 }
 log_success() { 
-  local msg="[\033[34m$(date +"%H:%M:%S")\033[0m] \033[32m✓\033[0m $*"
+  local msg
+  msg="[\033[34m$(date +"%H:%M:%S")\033[0m] \033[32m✓\033[0m $*"
   echo -e "$msg"
   if [[ -w "$(dirname "$LOG_FILE")" ]]; then
     echo -e "$msg" >> "$LOG_FILE" 2>/dev/null || true
   fi
 }
 log_error() { 
-  local msg="[\033[34m$(date +"%H:%M:%S")\033[0m] \033[31m✗\033[0m $*"
-  echo -e "$msg"
+  local msg
+  msg="[\033[34m$(date +"%H:%M:%S")\033[0m] \033[31m✗\033[0m $*"
+  echo -e "$msg" >&2
   if [[ -w "$(dirname "$LOG_FILE")" ]]; then
     echo -e "$msg" >> "$LOG_FILE" 2>/dev/null || true
     echo -e "$msg" >> "$ERROR_LOG" 2>/dev/null || true
   fi
 }
 log_warning() { 
-  local msg="[\033[34m$(date +"%H:%M:%S")\033[0m] \033[33m!\033[0m $*"
+  local msg
+  msg="[\033[34m$(date +"%H:%M:%S")\033[0m] \033[33m!\033[0m $*"
   echo -e "$msg"
   if [[ -w "$(dirname "$LOG_FILE")" ]]; then
     echo -e "$msg" >> "$LOG_FILE" 2>/dev/null || true
@@ -82,10 +82,15 @@ PY_SUITE_OK=false
 HEALTH_OK=false
 EOF
   fi
+  # shellcheck source=/dev/null
   source "$STATE_FILE"
 }
 
-update_state() { sed -i "s/^$1=.*/$1=$2/" "$STATE_FILE"; source "$STATE_FILE"; }
+update_state() {
+  sed -i "s/^$1=.*/$1=$2/" "$STATE_FILE"
+  # shellcheck source=/dev/null
+  source "$STATE_FILE"
+}
 
 # =============================================
 # ARGUMENT PARSING
@@ -96,7 +101,6 @@ parse_args() {
       --container-mode) CONTAINER_MODE=true ;;
       --dry-run) DRY_RUN=true ;;
       --force) FORCE=true ;;
-      --resume) RESUME=true ;;
       --auto-remove-conflicts) AUTO_REMOVE_CONFLICTS=true ;;
       --skip-netalertx) INSTALL_NETALERTX=false ;;
       --skip-python-api) INSTALL_PYTHON_SUITE=false ;;
@@ -145,10 +149,12 @@ check_ports() {
     return 0
   fi
   
-  local ports=($UNBOUND_PORT 53)
-  [[ "$INSTALL_NETALERTX" == true ]] && ports+=($NETALERTX_PORT)
-  [[ "$INSTALL_PYTHON_SUITE" == true ]] && ports+=($PYTHON_SUITE_PORT)
-  [[ "$CONTAINER_MODE" == true ]] && ports+=($CONTAINER_PIHOLE_DNS_PORT $CONTAINER_PIHOLE_WEB_PORT)
+  local ports=("$UNBOUND_PORT" "53")
+  [[ "$INSTALL_NETALERTX" == true ]] && ports+=("$NETALERTX_PORT")
+  [[ "$INSTALL_PYTHON_SUITE" == true ]] && ports+=("$PYTHON_SUITE_PORT")
+  if [[ "$CONTAINER_MODE" == true ]]; then
+    ports+=("$CONTAINER_PIHOLE_DNS_PORT" "$CONTAINER_PIHOLE_WEB_PORT")
+  fi
 
   for port in "${ports[@]}"; do
     if command -v ss &>/dev/null && ss -tuln | grep -q ":$port "; then
@@ -206,7 +212,7 @@ install_packages() {
     sudo apt-get remove -y containerd.io docker-ce docker-ce-cli || true
   }
 
-  for attempt in {1..3}; do
+  for _ in {1..3}; do
     if ! $DRY_RUN; then
       sudo DEBIAN_FRONTEND=noninteractive apt-get install -y "${packages[@]}" && {
         log_success "Packages installed"
