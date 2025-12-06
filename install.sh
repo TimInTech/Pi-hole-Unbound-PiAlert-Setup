@@ -14,6 +14,7 @@ ENV_FILE="${SCRIPT_DIR}/.env"
 RESOLV_CONF="/etc/resolv.conf"
 RESOLV_CONF_BACKUP="/etc/resolv.conf.bak"
 FALLBACK_RESOLVERS=("1.1.1.1" "9.9.9.9")
+PIHOLE_TOML="/etc/pihole/pihole.toml"
 
 # Defaults (NOT readonly)
 CONTAINER_MODE=false
@@ -386,6 +387,13 @@ setup_pihole_host() {
     else
       log_warning "Pi-hole setupVars.conf not found, DNS configuration may need manual setup"
     fi
+    if [[ -f "$PIHOLE_TOML" ]]; then
+      log "Detected pihole.toml at $PIHOLE_TOML (v6.1.4+ built-in web server)"
+    else
+      log_warning "pihole.toml missing; creating placeholder for Pi-hole v6.1.4 expectations"
+      sudo install -o pihole -g pihole -m 0644 /dev/null "$PIHOLE_TOML"
+      echo "# Managed via Pi-hole UI (placeholder created by installer)" | sudo tee "$PIHOLE_TOML" >/dev/null
+    fi
     echo "nameserver 127.0.0.1" | sudo tee "$RESOLV_CONF" >/dev/null
     log_success "Pi-hole OK"
     update_state PIHOLE_OK true
@@ -480,16 +488,35 @@ setup_python_suite() {
   [[ "$PY_SUITE_OK" == true && "$FORCE" != true ]] && { log "✅ Python Suite OK"; return; }
 
   if ! $DRY_RUN; then
+    local suite_user="pihole-suite"
+    local suite_group="pihole-suite"
+    local suite_state_dir="/var/lib/pihole-suite"
+    local suite_entrypoint="$SCRIPT_DIR/start_suite.py"
+
     mkdir -p "$SCRIPT_DIR/data"
     if [[ ! -f "$ENV_FILE" ]] || ! grep -q '^SUITE_API_KEY=' "$ENV_FILE"; then
       echo "SUITE_API_KEY=$(openssl rand -hex 16)" > "$ENV_FILE"
-      echo "SUITE_PORT=$PYTHON_SUITE_PORT" >> "$ENV_FILE"
     fi
+    grep -q '^SUITE_PORT=' "$ENV_FILE" 2>/dev/null || echo "SUITE_PORT=$PYTHON_SUITE_PORT" >> "$ENV_FILE"
+    grep -q '^SUITE_DATA_DIR=' "$ENV_FILE" 2>/dev/null || echo "SUITE_DATA_DIR=$SCRIPT_DIR/data" >> "$ENV_FILE"
+    grep -q '^SUITE_LOG_LEVEL=' "$ENV_FILE" 2>/dev/null || echo "SUITE_LOG_LEVEL=INFO" >> "$ENV_FILE"
+
+    if ! getent group "$suite_group" >/dev/null 2>&1; then
+      sudo groupadd --system "$suite_group"
+    fi
+    if ! id -u "$suite_user" >/dev/null 2>&1; then
+      sudo useradd --system --no-create-home --shell /usr/sbin/nologin --gid "$suite_group" "$suite_user"
+    fi
+    sudo mkdir -p "$suite_state_dir"
 
     [[ ! -d "$SCRIPT_DIR/venv" ]] && python3 -m venv "$SCRIPT_DIR/venv"
     "$SCRIPT_DIR/venv/bin/pip" install -r "$SCRIPT_DIR/requirements.txt" || {
       log_error "Python requirements failed"; exit 1;
     }
+    sudo chown -R "$suite_user":"$suite_group" "$SCRIPT_DIR/data" "$SCRIPT_DIR/venv" "$suite_state_dir" 2>/dev/null || true
+    sudo chown "$suite_user":"$suite_group" "$ENV_FILE"
+    sudo chmod 640 "$ENV_FILE"
+    [[ -f "$suite_entrypoint" ]] || log_warning "Python Suite entrypoint missing at $suite_entrypoint (service may need code before start)"
 
     if [[ "$CONTAINER_MODE" == false ]]; then
       cat > /tmp/pihole-suite.service <<EOF
@@ -497,13 +524,34 @@ setup_python_suite() {
 Description=Python Suite Service
 After=network.target
 [Service]
-User=root
+User=$suite_user
+Group=$suite_group
 WorkingDirectory=$SCRIPT_DIR
 EnvironmentFile=$ENV_FILE
-ExecStart=$SCRIPT_DIR/venv/bin/python $SCRIPT_DIR/start_suite.py
+ExecStart=$SCRIPT_DIR/venv/bin/python $suite_entrypoint
 Restart=always
+RestartSec=3
+UMask=027
+RuntimeDirectory=pihole-suite
+StateDirectory=pihole-suite
+LogsDirectory=pihole-suite
+CacheDirectory=pihole-suite
+ReadWritePaths=$SCRIPT_DIR $suite_state_dir
 PrivateTmp=true
-ProtectSystem=full
+PrivateDevices=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+MemoryDenyWriteExecute=true
+SystemCallFilter=@system-service
+CapabilityBoundingSet=
 [Install]
 WantedBy=multi-user.target
 EOF

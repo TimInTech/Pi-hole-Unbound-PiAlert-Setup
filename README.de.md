@@ -5,7 +5,7 @@
 
 [![Build Status](https://img.shields.io/github/actions/workflow/status/TimInTech/Pi-hole-Unbound-PiAlert-Setup/ci.yml?branch=main&style=for-the-badge&logo=github)](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/actions)
 [![License](https://img.shields.io/github/license/TimInTech/Pi-hole-Unbound-PiAlert-Setup?style=for-the-badge&color=blue)](LICENSE)
-[![Pi-hole](https://img.shields.io/badge/Pi--hole-v6.x-red?style=for-the-badge&logo=pihole)](https://pi-hole.net/)
+[![Pi-hole](https://img.shields.io/badge/Pi--hole-v6.1.4-red?style=for-the-badge&logo=pihole)](https://pi-hole.net/)
 [![Unbound](https://img.shields.io/badge/Unbound-DNS-orange?style=for-the-badge)](https://nlnetlabs.nl/projects/unbound/)
 [![NetAlertX](https://img.shields.io/badge/NetAlertX-Monitor-green?style=for-the-badge)](https://github.com/jokob-sk/NetAlertX)
 [![Debian](https://img.shields.io/badge/Debian-Compatible-red?style=for-the-badge&logo=debian)](https://debian.org/)
@@ -24,12 +24,16 @@
 
 ## ✨ Features
 
+✅ **Pi-hole Core 6.1.4 / FTL 6.1 / Web 6.2** – Eingebauter Webserver (kein lighttpd nötig)  
+✅ **Zielplattform:** Raspberry Pi 3/4 (64-bit) mit Debian Bookworm/Trixie (inkl. Raspberry Pi OS)  
 ✅ **Ein-Klick-Installation** – Setup mit einem Befehl  
-✅ **DNS-Sicherheit** – Pi-hole + Unbound mit DNSSEC  
-✅ **Netzwerk-Monitoring** – NetAlertX Geräte-Tracking  
-✅ **API-Monitoring** – Python FastAPI + SQLite  
+✅ **DNS-Sicherheit** – Pi-hole + Unbound mit DNSSEC (optional)  
+✅ **Netzwerk-Monitoring** – NetAlertX Geräte-Tracking (optional)  
+✅ **API-Monitoring** – Python FastAPI + SQLite (optional)  
 ✅ **Produktionsbereit** – Systemd-Hardening & Auto-Restart  
 ✅ **Idempotent** – Sicher mehrfach ausführbar  
+
+> Getestet auf Raspberry Pi 3/4 (64-bit) unter Debian Bookworm/Trixie. Nutzt Pi-hole Core 6.1.4 / FTL 6.1 / Web 6.2 mit eingebautem Webserver – kein lighttpd nötig.
 
 ---
 
@@ -44,16 +48,18 @@ sudo ./install.sh
 
 **Fertig!** 🎉 Ihr kompletter DNS-Sicherheits-Stack läuft jetzt.
 
+> Schlanke Installation? Nutze `--skip-netalertx`, `--skip-python-api` oder `--minimal`, um nur die Kernkomponenten zu installieren.
+
 ---
 
 ## 🧰 Was installiert wird
 
-| Komponente        | Zweck                             | Zugriff                  |
-| ----------------- | --------------------------------- | ------------------------ |
-| **🕳️ Pi-hole**   | DNS-Werbeblocker & Web-Oberfläche | `http://[ihre-ip]/admin` |
-| **🔐 Unbound**    | Rekursiver DNS + DNSSEC           | `127.0.0.1:5335`         |
-| **📡 NetAlertX**  | Netzwerkgeräte-Monitoring         | `http://[ihre-ip]:20211` |
-| **🐍 Python API** | Monitoring- & Statistik-API       | `http://127.0.0.1:8090`  |
+| Komponente        | Zweck                             | Zugriff                  | Hinweis                                                   |
+| ----------------- | --------------------------------- | ------------------------ | --------------------------------------------------------- |
+| **🕳️ Pi-hole**   | DNS-Werbeblocker & Web-Oberfläche | `http://[ihre-ip]/admin` | Core 6.1.4 / FTL 6.1 / Web 6.2 (eingebauter Webserver)   |
+| **🔐 Unbound**    | Rekursiver DNS + DNSSEC           | `127.0.0.1:5335`         | Optional; eigenen Upstream nutzen, falls Unbound entfällt |
+| **📡 NetAlertX**  | Netzwerkgeräte-Monitoring         | `http://[ihre-ip]:20211` | Optional (`--skip-netalertx`)                             |
+| **🐍 Python API** | Monitoring- & Statistik-API       | `http://127.0.0.1:8090`  | Optional (`--skip-python-api` oder `--minimal`)           |
 
 ---
 
@@ -217,12 +223,12 @@ docker restart netalertx
 
 ### Häufige Probleme
 
-| Problem                   | Lösung                                                                                       |
-| ------------------------- | -------------------------------------------------------------------------------------------- |
-| **Port 53 belegt**        | `sudo systemctl stop systemd-resolved` *(ggf. dauerhaft: disable + /etc/resolv.conf prüfen)* |
-| **API-Key fehlt**         | `.env`-Datei prüfen oder mit Installer neu generieren                                        |
-| **Datenbankfehler**       | `python scripts/bootstrap.py` ausführen                                                      |
-| **Unbound startet nicht** | `/etc/unbound/unbound.conf.d/pi-hole.conf` prüfen                                            |
+| Problem                                  | Lösung                                                                                                                                   |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| **Port 53 belegt (systemd-resolved)**    | `sudo systemctl disable --now systemd-resolved`; danach `./install.sh --resume` ausführen. Details: `Pi-hole-v6.0---Comprehensive-Guide/TROUBLESHOOTING.md`. |
+| **FTL-DB/UI-Korruption nach Upgrade**    | `Pi-hole-v6.0---Comprehensive-Guide/scripts/fix-ftl-db.sh` bzw. `scripts/fix-ui-403.sh` ausführen, danach `pihole restartdns`.           |
+| **DNS-Ausfälle / Upstream-Fehler**       | `dig @127.0.0.1 -p 5335 example.com`; bei Problemen `./install.sh --force` erneut anwenden und `Pi-hole-v6.0---Comprehensive-Guide/scripts/v6-upgrade-check.sh` laufen lassen. |
+| **API-Key fehlt**                        | `.env` prüfen oder mit dem Installer neu generieren (`SUITE_API_KEY`).                                                                   |
 
 ---
 
