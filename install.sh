@@ -399,10 +399,14 @@ ensure_docker_service() {
 install_packages() {
   [[ "$PACKAGES_OK" == true && "$FORCE" != true ]] && { log "✅ Packages OK"; return; }
 
-  local packages=(
+    local packages=(
     unbound unbound-host unbound-anchor dns-root-data ca-certificates curl dnsutils iproute2
-    python3 python3-venv python3-pip git openssl sqlite3 docker.io
+    python3 python3-venv python3-pip git openssl sqlite3 jq
   )
+
+  if [[ "$INSTALL_NETALERTX" == true || "$CONTAINER_MODE" == true ]]; then
+    packages+=(docker.io)
+  fi
 
   log "Installing packages..."
   sudo apt-get update -qq

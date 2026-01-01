@@ -220,6 +220,12 @@ Zusammenfassung (Ampel)
 | **📡 NetAlertX**  | Netzwerkgeräte-Monitoring         | `http://[ihre-ip]:20211` | Optional (`--skip-netalertx`)                             |
 | **🐍 Python API** | Monitoring- & Statistik-API       | `http://127.0.0.1:8090`  | Optional (`--skip-python-api` oder `--minimal`)           |
 
+
+**NetAlertX Datenpersistenz**
+
+- Der Container nutzt `/opt/netalertx/data` auf dem Host und mountet es nach `/data` im Container.
+- Wenn du vorher Legacy-Mounts (`/opt/netalertx/config` und `/opt/netalertx/db`) genutzt hast, migriere die Daten nach `/opt/netalertx/data`, bevor du den Container neu erstellst.
+
 ---
 
 ## 🗺️ Architektur
@@ -290,6 +296,26 @@ curl -s -H "X-API-Key: $SUITE_API_KEY" http://127.0.0.1:8090/health
 ```
 
 ### Endpunkte
+
+#### `GET /version`
+
+Gibt API-Version + Uptime zurück.
+
+#### `GET /urls`
+
+Gibt Best-Guess-URLs für Pi-hole / NetAlertX und das lokale Suite-Binding zurück.
+
+#### `GET /pihole`
+
+Gibt Pi-hole-Version/FTL-Status und konfigurierte v6-Upstreams (aus `pihole.toml`) zurück.
+
+#### `GET /unbound`
+
+Prüft Unbound-Service + einen schnellen `dig` gegen `127.0.0.1:${UNBOUND_PORT}`.
+
+#### `GET /netalertx`
+
+Prüft, ob NetAlertX auf `http://127.0.0.1:${NETALERTX_PORT}` antwortet.
 
 #### `GET /health`
 
@@ -473,10 +499,10 @@ docker restart netalertx
 
 | Problem                                  | Lösung                                                                                                                                   |
 | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| **Port 53 belegt (systemd-resolved)**    | `sudo systemctl disable --now systemd-resolved`; danach `./install.sh --resume` ausführen. Prüfen mit `sudo ss -tulpen | grep :53`. |
+| **Port 53 belegt (systemd-resolved)**    | `sudo systemctl disable --now systemd-resolved`; danach `sudo ./install.sh` ausführen. Prüfen mit `sudo ss -tulpen | grep :53`. |
 | **FTL-DB/UI-Korruption nach Upgrade**    | Logs prüfen mit `sudo journalctl -u pihole-FTL -n 50`, dann neustarten: `sudo systemctl restart pihole-FTL`.           |
 | **DNS-Ausfälle / Upstream-Fehler**       | `dig @127.0.0.1 -p 5335 example.com`; Konfiguration prüfen mit `./scripts/post_install_check.sh --full`; bei Problemen `./install.sh --force` erneut anwenden. |
-| **API-Key fehlt**                        | `.env` prüfen oder mit dem Installer neu generieren (`SUITE_API_KEY`).                                                                   |
+| **API-Key fehlt**                        | `/etc/pihole-suite/pihole-suite.env` prüfen oder den Installer erneut ausführen (regeneriert `SUITE_API_KEY`).                                                                   |
 
 ---
 
@@ -484,7 +510,7 @@ docker restart netalertx
 
 ### 🔐 API-Sicherheit
 
-* **API-Keys** werden automatisch generiert (16-Byte Hex)
+* **API-Keys** werden automatisch generiert (32-Byte Hex)
 * **CORS** nur für localhost aktiviert
 * **Authentifizierung** für alle Endpunkte erforderlich
 

@@ -505,6 +505,15 @@ check_netalertx() {
   local port=""
 
   # Check for NetAlertX container
+  if [[ -d /opt/netalertx/data ]]; then
+    pass "NetAlertX data dir present: /opt/netalertx/data"
+  fi
+  if [[ -d /opt/netalertx/config || -d /opt/netalertx/db ]]; then
+    if [[ -n "$(ls -A /opt/netalertx/config 2>/dev/null || true)" ||           -n "$(ls -A /opt/netalertx/db 2>/dev/null || true)" ]]; then
+      warn "Legacy NetAlertX dirs detected (/opt/netalertx/config,/opt/netalertx/db). New mount uses /opt/netalertx/data -> /data; migrate if needed."
+    fi
+  fi
+
   if command -v docker &>/dev/null; then
     if sudo docker ps 2>/dev/null | grep -q netalertx || docker ps 2>/dev/null | grep -q netalertx; then
       pass "NetAlertX container is running"

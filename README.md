@@ -255,6 +255,12 @@ Optional hard proof (if tcpdump installed):
 | **📡 NetAlertX**  | Network device monitoring | `http://[your-ip]:20211` | Optional (`--skip-netalertx`)                        |
 | **🐍 Python API** | Monitoring & stats API    | `http://127.0.0.1:8090`  | Optional (`--skip-python-api` or `--minimal`)        |
 
+
+**NetAlertX data persistence**
+
+- Container uses `/opt/netalertx/data` on the host mounted to `/data` in the container.
+- If you previously used legacy mounts (`/opt/netalertx/config` and `/opt/netalertx/db`), migrate your data into `/opt/netalertx/data` before recreating the container.
+
 ---
 
 ## 🗺️ Architecture
@@ -309,6 +315,26 @@ curl -s -H "X-API-Key: $SUITE_API_KEY" http://127.0.0.1:8090/health
 ```
 
 ### Endpoints
+
+#### `GET /version`
+
+Returns API version + uptime.
+
+#### `GET /urls`
+
+Returns best-guess URLs for Pi-hole / NetAlertX and the local Suite bind.
+
+#### `GET /pihole`
+
+Returns Pi-hole version/FTL status and configured v6 upstreams (from `pihole.toml`).
+
+#### `GET /unbound`
+
+Checks Unbound service + a quick `dig` against `127.0.0.1:${UNBOUND_PORT}`.
+
+#### `GET /netalertx`
+
+Checks whether NetAlertX responds on `http://127.0.0.1:${NETALERTX_PORT}`.
 
 #### `GET /health`
 
