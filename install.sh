@@ -92,6 +92,84 @@ update_state() {
   source "$STATE_FILE"
 }
 
+
+# =============================================
+# STATE VALIDATION (avoid stale install.state)
+# =============================================
+validate_state_against_system() {
+  # The state file is an optimization only. If it claims something is OK but the
+  # underlying binary/service/container is missing, reset the flag so the
+  # installer performs the step again.
+  [[ "$FORCE" == true ]] && return
+
+  local changed=false
+
+  # Unbound
+  if [[ "${UNBOUND_OK:-false}" == true ]]; then
+    if ! command -v unbound-checkconf >/dev/null 2>&1; then
+      log_warning "State override: UNBOUND_OK=true but unbound not installed"
+      update_state UNBOUND_OK false
+      changed=true
+    elif command -v systemctl >/dev/null 2>&1 && ! systemctl is-active --quiet unbound 2>/dev/null; then
+      log_warning "State override: UNBOUND_OK=true but unbound service not active"
+      update_state UNBOUND_OK false
+      changed=true
+    fi
+  fi
+
+  # Pi-hole
+  if [[ "${PIHOLE_OK:-false}" == true ]]; then
+    if [[ "$CONTAINER_MODE" == true ]]; then
+      if ! command -v docker >/dev/null 2>&1; then
+        log_warning "State override: PIHOLE_OK=true but docker missing"
+        update_state PIHOLE_OK false
+        changed=true
+      elif ! sudo -n docker ps 2>/dev/null | grep -q '\bpihole\b'; then
+        log_warning "State override: PIHOLE_OK=true but pihole container missing"
+        update_state PIHOLE_OK false
+        changed=true
+      fi
+    else
+      if ! command -v pihole >/dev/null 2>&1; then
+        log_warning "State override: PIHOLE_OK=true but pihole command missing"
+        update_state PIHOLE_OK false
+        changed=true
+      elif command -v systemctl >/dev/null 2>&1 && ! systemctl is-active --quiet pihole-FTL 2>/dev/null; then
+        log_warning "State override: PIHOLE_OK=true but pihole-FTL service not active"
+        update_state PIHOLE_OK false
+        changed=true
+      fi
+    fi
+  fi
+
+  # NetAlertX
+  if [[ "${NETALERTX_OK:-false}" == true && "${INSTALL_NETALERTX:-true}" == true ]]; then
+    if ! command -v docker >/dev/null 2>&1; then
+      log_warning "State override: NETALERTX_OK=true but docker missing"
+      update_state NETALERTX_OK false
+      changed=true
+    elif ! sudo -n docker ps 2>/dev/null | grep -q '\bnetalertx\b'; then
+      log_warning "State override: NETALERTX_OK=true but netalertx container missing"
+      update_state NETALERTX_OK false
+      changed=true
+    fi
+  fi
+
+  # Python Suite
+  if [[ "${PY_SUITE_OK:-false}" == true && "$CONTAINER_MODE" == false && "${INSTALL_PYTHON_SUITE:-true}" == true ]]; then
+    if command -v systemctl >/dev/null 2>&1 && ! systemctl is-active --quiet pihole-suite 2>/dev/null; then
+      log_warning "State override: PY_SUITE_OK=true but pihole-suite service not active"
+      update_state PY_SUITE_OK false
+      changed=true
+    fi
+  fi
+
+  # Health is derived; if anything changed, recompute.
+  if [[ "$changed" == true ]]; then
+    update_state HEALTH_OK false
+  fi
+}
+
 # =============================================
 # ARGUMENT PARSING
 # =============================================
@@ -239,16 +317,43 @@ configure_unbound() {
   log "Configuring Unbound DNS with DoT (DNS-over-TLS)..."
   if ! $DRY_RUN; then
     # Create Unbound directories
-    sudo mkdir -p /var/lib/unbound
+    sudo install -d -m 0755 /var/lib/unbound
     
     # Download root hints for DNS resolution
     sudo curl -fsSL https://www.internic.net/domain/named.root -o /var/lib/unbound/root.hints || {
       log_error "Failed to download root.hints"; exit 1;
     }
     
-    # Update DNSSEC trust anchor (hard requirement)
+    # Update/validate DNSSEC trust anchor (root.key)
     command -v unbound-anchor >/dev/null 2>&1 || { log_error "unbound-anchor missing"; exit 1; }
-    sudo unbound-anchor -a /var/lib/unbound/root.key || { log_error "unbound-anchor failed"; exit 1; }
+
+    local unbound_anchor="/var/lib/unbound/root.key"
+    local unbound_anchor_log="/tmp/unbound-anchor.log"
+
+    log "Updating/validating DNSSEC trust anchor (root.key)..."
+
+    if [[ -f "$unbound_anchor" ]]; then
+      if sudo unbound-anchor -a "$unbound_anchor" -v >"$unbound_anchor_log" 2>&1; then
+        log_success "trust anchor ok (existing root.key)"
+      else
+        log_warning "unbound-anchor returned non-zero, but root.key exists; retrying..."
+        sudo tail -n 50 "$unbound_anchor_log" 2>/dev/null || true
+        sleep 2
+        if sudo unbound-anchor -a "$unbound_anchor" -v >"$unbound_anchor_log" 2>&1; then
+          log_success "trust anchor ok after retry"
+        else
+          log_warning "unbound-anchor still failing; continuing (DNSSEC may be impaired)."
+          sudo tail -n 80 "$unbound_anchor_log" 2>/dev/null || true
+        fi
+      fi
+    else
+      if sudo unbound-anchor -a "$unbound_anchor" -v >"$unbound_anchor_log" 2>&1; then
+        log_success "trust anchor created"
+      else
+        log_warning "unbound-anchor failed to create root.key; continuing (DNSSEC may be impaired)."
+        sudo tail -n 80 "$unbound_anchor_log" 2>/dev/null || true
+      fi
+    fi
     
     # Verify TLS certificate bundle exists
     if [[ ! -f /etc/ssl/certs/ca-certificates.crt ]]; then
@@ -258,6 +363,18 @@ configure_unbound() {
 
     # Create Unbound configuration directory if missing
     sudo mkdir -p /etc/unbound/unbound.conf.d
+
+    # Ensure base config exists (it may be missing after manual cleanup or on some distros)
+    if [[ ! -f /etc/unbound/unbound.conf ]]; then
+      log_warning "/etc/unbound/unbound.conf missing; creating minimal include file"
+      sudo bash -c 'cat > /etc/unbound/unbound.conf' <<'EOF'
+# Minimal Unbound config created by installer.
+# Loads all drop-in configs from /etc/unbound/unbound.conf.d/.
+server:
+    directory: "/etc/unbound"
+include: "/etc/unbound/unbound.conf.d/*.conf"
+EOF
+    fi
 
     # Create comprehensive Unbound configuration
     sudo bash -c 'cat > /etc/unbound/unbound.conf.d/forward.conf' <<EOF
@@ -315,7 +432,7 @@ EOF
 
     # Remove duplicate trust anchor directives if Ubuntu drop-in exists
     if [[ -f /etc/unbound/unbound.conf.d/root-auto-trust-anchor-file.conf ]]; then
-      sudo sed -i '/^\s*trust-anchor-file:/d' /etc/unbound/unbound.conf.d/forward.conf || true
+      sudo sed -i '/^[[:space:]]*trust-anchor-file:/d' /etc/unbound/unbound.conf.d/forward.conf || true
       log "Ubuntu auto-trust-anchor detected, removed duplicate trust-anchor-file directive"
     fi
 
@@ -358,6 +475,78 @@ EOF
 # =============================================
 # PI-HOLE SETUP
 # =============================================
+configure_pihole_v6_toml_upstreams() {
+  local toml_file="/etc/pihole/pihole.toml"
+  local temp_file
+  temp_file="$(mktemp)" || { log_error "Failed to create temp file"; exit 1; }
+
+  # Create the file if it doesn't exist
+  if [[ ! -f "$toml_file" ]]; then
+    log "Creating $toml_file..."
+    sudo install -o pihole -g pihole -m 0644 /dev/null "$toml_file"
+  fi
+
+  # Create timestamped backup preserving attributes
+  local backup_file="${toml_file}.backup.$(date +%Y%m%d_%H%M%S)"
+  sudo cp -a "$toml_file" "$backup_file"
+  log "Backup created: $backup_file"
+
+  # Single-pass awk rewrite: ensure [dns] exists, remove old upstreams, insert new upstream
+  sudo awk -v upstream="127.0.0.1#${UNBOUND_PORT}" '
+    BEGIN { in_dns=0; dns_exists=0; dns_written=0 }
+
+    # Track when we enter [dns] section
+    /^\[dns\]/ {
+      in_dns=1
+      dns_exists=1
+      print
+      print "upstreams = [\"" upstream "\"]"
+      dns_written=1
+      next
+    }
+
+    # Track when we leave [dns] section
+    /^\[/ && !/^\[dns\]/ {
+      in_dns=0
+    }
+
+    # Skip upstreams lines only within [dns] section
+    in_dns && /^[[:space:]]*upstreams[[:space:]]*=/ {
+      next
+    }
+
+    # Print all other lines
+    { print }
+
+    # At end of file, if [dns] was never found, add it
+    END {
+      if (!dns_exists) {
+        print ""
+        print "[dns]"
+        print "upstreams = [\"" upstream "\"]"
+      }
+    }
+  ' "$toml_file" > "$temp_file"
+
+  # Move temp file to final location
+  sudo mv "$temp_file" "$toml_file"
+
+  # Restore ownership and permissions
+  sudo chown pihole:pihole "$toml_file"
+  sudo chmod 0644 "$toml_file"
+
+  log "Configured DNS upstreams in $toml_file"
+
+  # Restart pihole-FTL
+  log "Restarting pihole-FTL..."
+  if ! sudo systemctl restart pihole-FTL; then
+    log_error "Failed to restart pihole-FTL"
+    exit 1
+  fi
+
+  log_success "Pi-hole v6 DNS upstreams configured"
+}
+
 setup_pihole() {
   [[ "$PIHOLE_OK" == true && "$FORCE" != true ]] && { log "✅ Pi-hole OK"; return; }
 
@@ -371,8 +560,14 @@ setup_pihole() {
 setup_pihole_host() {
   if ! $DRY_RUN; then
     if ! command -v pihole &>/dev/null; then
-      curl -sSL https://install.pi-hole.net | sudo PIHOLE_SKIP_OS_CHECK=true \
-        PIHOLE_INSTALL_AUTO=true DNS1=127.0.0.1#$UNBOUND_PORT DNS2=no bash || {
+      # Install Pi-hole non-interactively (SSH-safe)
+      curl -sSL https://install.pi-hole.net | sudo \
+        PIHOLE_SKIP_OS_CHECK=true \
+        PIHOLE_INSTALL_AUTO=true \
+        DEBIAN_FRONTEND=noninteractive \
+        DNS1=127.0.0.1#$UNBOUND_PORT \
+        DNS2=no \
+        bash -s -- --unattended || {
         log_error "Pi-hole install failed"; exit 1;
       }
     fi
@@ -389,9 +584,9 @@ setup_pihole_host() {
     if [[ -f /etc/pihole/setupVars.conf ]]; then
       sudo sed -i "s/^PIHOLE_DNS_1=.*/PIHOLE_DNS_1=127.0.0.1#$UNBOUND_PORT/" /etc/pihole/setupVars.conf
       sudo sed -i "s/^PIHOLE_DNS_2=.*/PIHOLE_DNS_2=/" /etc/pihole/setupVars.conf
-      sudo pihole restartdns
+      log "Updated legacy setupVars.conf for backward compatibility"
     else
-      log_warning "Pi-hole setupVars.conf not found, DNS configuration may need manual setup"
+      log_warning "Pi-hole setupVars.conf not found (OK for v6, uses pihole.toml)"
     fi
     if [[ -f "$PIHOLE_TOML" ]]; then
       log "Detected pihole.toml at $PIHOLE_TOML (v6.1.4+ built-in web server)"
@@ -400,6 +595,7 @@ setup_pihole_host() {
       sudo install -o pihole -g pihole -m 0644 /dev/null "$PIHOLE_TOML"
       echo "# Managed via Pi-hole UI (placeholder created by installer)" | sudo tee "$PIHOLE_TOML" >/dev/null
     fi
+    configure_pihole_v6_toml_upstreams
     echo "nameserver 127.0.0.1" | sudo tee "$RESOLV_CONF" >/dev/null
     log_success "Pi-hole OK"
     update_state PIHOLE_OK true
@@ -623,6 +819,7 @@ run_healthchecks() {
 main() {
   parse_args "$@"
   init_state
+  validate_state_against_system
   check_dependencies
   handle_systemd_resolved
   check_ports

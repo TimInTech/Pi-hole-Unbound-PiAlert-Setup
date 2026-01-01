@@ -4,3 +4,11 @@ node_modules/
 vendor/bundle/
 .bundle/
 .npm-cache/
+.claude/
+
+# Installer/runtime artifacts (local-only)
+data/
+*.log
+install-debug.log
+pihole-deployment-evidence/
+
