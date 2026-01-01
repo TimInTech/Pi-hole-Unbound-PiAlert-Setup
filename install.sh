@@ -1051,6 +1051,13 @@ setup_python_suite() {
     [[ -f "$suite_entrypoint" ]] || log_warning "Python Suite entrypoint missing at $suite_entrypoint (service may need code before start)"
 
     if [[ "$CONTAINER_MODE" == false ]]; then
+      local protect_home_value="true"
+      if [[ "$SCRIPT_DIR" == /home/* ]]; then
+        protect_home_value="read-only"
+      fi
+
+      local read_write_paths="$suite_state_dir"
+
       cat > /tmp/pihole-suite.service <<EOF
 [Unit]
 Description=Python Suite Service
@@ -1068,12 +1075,12 @@ RuntimeDirectory=pihole-suite
 StateDirectory=pihole-suite
 LogsDirectory=pihole-suite
 CacheDirectory=pihole-suite
-ReadWritePaths=$SCRIPT_DIR $suite_state_dir
+ReadWritePaths=$read_write_paths
 PrivateTmp=true
 PrivateDevices=true
 NoNewPrivileges=true
 ProtectSystem=strict
-ProtectHome=true
+ProtectHome=$protect_home_value
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
