@@ -969,6 +969,7 @@ setup_netalertx() {
 
     log "Creating NetAlertX container (host networking)..."
     sudo docker run -d --name netalertx --network host \
+      --user 20211:20211 \
       --cap-add=NET_ADMIN --cap-add=NET_RAW \
       -v /opt/netalertx/data:/data \
       --tmpfs /tmp:uid=20211,gid=20211,mode=1700 \
