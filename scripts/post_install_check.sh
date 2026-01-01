@@ -276,6 +276,18 @@ Common Issues:
 EOF
 }
 
+print_header() {
+  echo "────────────────────────────────────────────────────────────────"
+  echo "POST-INSTALL CHECK — Pi-hole v6 / Unbound / Docker / Pi.Alert"
+  echo "Script: ${SCRIPT_NAME} v${VERSION} (output language: English)"
+  echo "────────────────────────────────────────────────────────────────"
+}
+
+show_version() {
+  echo "${SCRIPT_NAME} v${VERSION}"
+  echo "Output language: English"
+}
+
 # =============================================
 # CHECK FUNCTIONS
 # =============================================
@@ -625,6 +637,7 @@ print_summary() {
 }
 
 quick_check() {
+  print_header
   info "Running Quick Check..."
   echo ""
 
@@ -660,6 +673,7 @@ quick_check() {
 }
 
 full_check() {
+  print_header
   info "Running Full Check..."
 
   # Reset counters
@@ -679,6 +693,7 @@ full_check() {
 show_menu() {
   while true; do
     echo ""
+    echo "${SCRIPT_NAME} v${VERSION} (output language: English)"
     echo "┌─────────────────────────────────────────────────────────────────┐"
     echo "│         Pi-hole + Unbound Post-Install Check v${VERSION}           │"
     echo "├─────────────────────────────────────────────────────────────────┤"
@@ -712,6 +727,7 @@ Post-installation verification script for Pi-hole + Unbound + Pi.Alert setup.
 Performs read-only checks to verify service health and configuration.
 
 OPTIONS:
+  --version     Show script version
   --quick       Run quick check (summary only)
   --full        Run full check (all sections)
   --urls        Show service URLs only
@@ -722,6 +738,7 @@ INTERACTIVE MODE:
   Run without arguments to enter interactive menu mode.
 
 EXAMPLES:
+  $SCRIPT_NAME --version         # Show version
   $SCRIPT_NAME --quick           # Quick status check
   $SCRIPT_NAME --full            # Comprehensive check
   $SCRIPT_NAME --urls            # Display service URLs
@@ -743,6 +760,10 @@ EOF
 main() {
   # Check for non-interactive flags
   case "${1:-}" in
+    --version)
+      show_version
+      exit 0
+      ;;
     --quick)
       detect_unbound_port
       quick_check

@@ -107,7 +107,7 @@ upstreams = ["127.0.0.1#5335"]
 
 Dieses Repo enthält ein **read-only** Prüfskript, mit dem du nach der Installation schnell verifizieren kannst, dass Pi-hole, Unbound (und optional NetAlertX) laufen und korrekt konfiguriert sind.
 
-Hinweis: Die Skript-Ausgabe ist aktuell **nur auf Englisch** (keine automatische Übersetzung je nach System-Sprache).
+Hinweis: Die Skript-Ausgabe ist aktuell **nur auf Englisch** (keine automatische Übersetzung je nach System-Sprache). Wenn du eine deutsche Ausgabe siehst, läuft sehr wahrscheinlich eine angepasste/ältere Kopie — prüfe `./scripts/post_install_check.sh --version`.
 
 ### Häufige Kommandos
 
@@ -129,6 +129,7 @@ sudo ./scripts/post_install_check.sh --full
 
 Optionen (Kurzüberblick):
 
+- `--version` Version anzeigen
 - `--quick` Schnellprüfung (nur Zusammenfassung)
 - `--full` Vollprüfung (alle Abschnitte; `sudo` empfohlen)
 - `--urls` Nur URLs anzeigen
@@ -136,6 +137,55 @@ Optionen (Kurzüberblick):
 - `-h, --help` Hilfe anzeigen
 
 Interaktiv: Ohne Argumente starten (`./scripts/post_install_check.sh`).
+
+
+### Beispielausgabe (Raspberry Pi)
+
+Reale Beispielausgabe einer Pi-Installation (`sudo ./scripts/post_install_check.sh --full`). Deine Werte können abweichen.
+Hinweis: Diese konkrete Ausgabe ist deutsch (das deutet auf eine angepasste/ältere Kopie hin). Die Repo-Version identifizierst du mit `./scripts/post_install_check.sh --version`.
+
+```text
+────────────────────────────────────────────────────────────────
+POST-INSTALL CHECK — Pi-hole v6 / Unbound / Docker / Pi.Alert Next
+────────────────────────────────────────────────────────────────
+Zeit                 2026-01-01T14:38:40+00:00
+Host                 raspberrypi
+OS                   Debian GNU/Linux 13 (trixie)
+Kernel               6.12.47+rpt-rpi-v8
+Default IF / GW      eth0 / 192.168.178.1
+IPv4                 192.168.178.52,172.17.0.1
+IPv6                 keine
+
+URLs (best guess)
+• Pi-hole Admin: http://192.168.178.52/admin
+• Pi.Alert/NetAlertX: (Port 20211/8081 nicht erkannt – prüfen ob Service/Container läuft)
+
+Unbound
+Service unbound.service            ✔  läuft
+Listener 127.0.0.1:5335            ✔  TCP/UDP gebunden
+dig @127.0.0.1#5335 cloudflare.com ✔  104.16.133.229
+
+Pi-hole v6
+Service pihole-FTL                 ✔  läuft
+DNS Listener :53                   ✔  mindestens ein Listener aktiv
+pihole.toml Upstream               ⚠
+dig @127.0.0.1 example.org         ✔  Pi-hole beantwortet DNS
+
+Docker
+docker                             ✔  docker erreichbar
+Running containers:
+• netalertx  (Image: jokobsk/netalertx:latest)  Ports:
+
+Pi.Alert Next / NetAlertX
+Service (pialert/netalertx)        ⚠  kein systemd service gefunden
+Docker container (pialert/netalertx) ✔  Container läuft
+
+Zusammenfassung (Ampel)
+⚠ Grundsätzlich OK, aber es gibt Warnungen (Upstream/Services prüfen).
+
+ℹ Optionaler harter Beweis (wenn tcpdump installiert):
+  sudo tcpdump -i lo port 5335 -n  # parallel: dig example.org @127.0.0.1
+```
 
 
 > Schlanke Installation? Nutze `--skip-netalertx`, `--skip-python-api` oder `--minimal`, um nur die Kernkomponenten zu installieren.
