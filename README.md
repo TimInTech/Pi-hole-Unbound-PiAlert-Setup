@@ -128,6 +128,25 @@ sudo ./scripts/post_install_check.sh --full
 
 ### Options & interactive menu
 
+### Troubleshooting notes
+
+If you see **German output**, you're not running the repo version (it is English-only). Check:
+
+```bash
+./scripts/post_install_check.sh --version
+readlink -f ./scripts/post_install_check.sh
+```
+
+**NetAlertX / Pi.Alert Next (Docker):** This repo runs NetAlertX as a Docker container named `netalertx`. It's normal to have **no systemd service** for it. If the script can't show a URL, verify port mapping:
+
+```bash
+sudo docker ps --format '{{.Names}}  {{.Ports}}' | grep -i netalertx
+# expected: 0.0.0.0:20211->20211/tcp (or similar)
+```
+
+**Python API (`pihole-suite`, optional):** A local FastAPI service bound to `127.0.0.1:8090` with API-key auth (`X-API-Key`). It exposes read-only endpoints like `/health`, `/dns`, `/leases`, `/stats`. Some endpoints may return empty data depending on logs/permissions.
+
+
 `--help` output:
 
 ```text
@@ -273,6 +292,8 @@ Optional hard proof (if tcpdump installed):
 
 ### Authentication
 
+The installer generates an API key in `.env` (`SUITE_API_KEY`). You can inspect it with `sudo cat .env`.
+
 All endpoints require the `X-API-Key` header:
 
 ```bash
@@ -299,11 +320,13 @@ curl -H "X-API-Key: your-api-key" http://127.0.0.1:8090/endpoint
     "ip": "192.168.1.101",
     "mac": "aa:bb:cc:dd:ee:ff",
     "hostname": "printer",
-    "lease_start": "2024-12-21 10:00:00",
-    "lease_end": "2024-12-21 12:00:00"
+    "lease_start": null,
+    "lease_end": "2026-01-01T14:38:40+00:00"
   }
 ]
 ```
+
+Note: `lease_start` may be `null` (not available in all lease sources).
 
 #### `GET /dns?limit=50`
 
@@ -321,24 +344,19 @@ curl -H "X-API-Key: your-api-key" http://127.0.0.1:8090/endpoint
 #### `GET /devices`
 
 ```json
-[
-  {
-    "id": 1,
-    "ip": "192.168.1.100",
-    "mac": "aa:bb:cc:dd:ee:ff", 
-    "hostname": "laptop",
-    "last_seen": "2024-12-21 10:30:00"
-  }
-]
+[]
 ```
+
+Note: Device data depends on NetAlertX/Pi.Alert APIs/DB and is not populated in this minimal Suite API yet.
 
 #### `GET /stats`
 
 ```json
 {
-  "total_dns_logs": 1250,
-  "total_devices": 15,
-  "recent_queries": 89
+  "total_dns_logs": 89,
+  "total_devices": 0,
+  "recent_queries": 89,
+  "note": "DNS stats are derived from best-effort log parsing; may be empty depending on Pi-hole logging/permissions."
 }
 ```
 

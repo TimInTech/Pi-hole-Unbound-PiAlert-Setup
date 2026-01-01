@@ -11,6 +11,11 @@ data/
 *.log
 install-debug.log
 pihole-deployment-evidence/
+report.md
 
 # Windows download metadata
 *:Zone.Identifier
+
+# Python cache
+__pycache__/
+*.pyc

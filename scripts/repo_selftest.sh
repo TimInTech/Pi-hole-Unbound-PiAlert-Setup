@@ -205,7 +205,7 @@ test_required_files() {
   cd "$REPO_ROOT" || return 1
 
   local file
-  for file in install.sh README.md README.de.md scripts/post_install_check.sh scripts/console_menu.sh .gitignore; do
+  for file in install.sh README.md README.de.md start_suite.py scripts/post_install_check.sh scripts/console_menu.sh .gitignore; do
     if [[ -f "$file" ]]; then
       pass "Required file exists: $file"
     else

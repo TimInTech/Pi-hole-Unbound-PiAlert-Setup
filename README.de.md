@@ -127,6 +127,25 @@ sudo ./scripts/post_install_check.sh --full
 
 ### Optionen & interaktives Menü
 
+### Troubleshooting (häufige Ursachen)
+
+Wenn du eine **deutsche Ausgabe** siehst, läuft sehr wahrscheinlich nicht die Repo-Version (die ist English-only). Prüfe:
+
+```bash
+./scripts/post_install_check.sh --version
+readlink -f ./scripts/post_install_check.sh
+```
+
+**NetAlertX / Pi.Alert Next (Docker):** Dieses Repo betreibt NetAlertX als Docker-Container `netalertx`. Es ist normal, dass **kein systemd-Service** existiert. Wenn keine URL erkannt wird, Port-Mapping prüfen:
+
+```bash
+sudo docker ps --format '{{.Names}}  {{.Ports}}' | grep -i netalertx
+# erwartet: 0.0.0.0:20211->20211/tcp (oder ähnlich)
+```
+
+**Python API (`pihole-suite`, optional):** Lokaler FastAPI-Dienst auf `127.0.0.1:8090` (API-Key über `X-API-Key`). Liefert read-only Endpunkte wie `/health`, `/dns`, `/leases`, `/stats`. Je nach Logging/Rechten können Daten leer sein.
+
+
 Optionen (Kurzüberblick):
 
 - `--version` Version anzeigen
@@ -244,13 +263,17 @@ Zusammenfassung (Ampel)
     "ip": "192.168.1.101",
     "mac": "aa:bb:cc:dd:ee:ff",
     "hostname": "drucker",
-    "lease_start": "2024-12-21 10:00:00",
-    "lease_end": "2024-12-21 12:00:00"
+    "lease_start": null,
+    "lease_end": "2026-01-01T14:38:40+00:00"
   }
 ]
 ```
 
+Hinweis: `lease_start` ist ggf. `null` (nicht in allen Lease-Dateien verfügbar).
+
 ### Authentifizierung
+
+Der Installer generiert den API-Key in `.env` (`SUITE_API_KEY`). Du kannst ihn mit `sudo cat .env` ansehen.
 
 Alle Endpunkte benötigen den `X-API-Key`-Header:
 
@@ -286,24 +309,19 @@ curl -H "X-API-Key: $SUITE_API_KEY" http://127.0.0.1:8090/endpoint
 #### `GET /devices`
 
 ```json
-[
-  {
-    "id": 1,
-    "ip": "192.168.1.100",
-    "mac": "aa:bb:cc:dd:ee:ff", 
-    "hostname": "laptop",
-    "last_seen": "2024-12-21 10:30:00"
-  }
-]
+[]
 ```
+
+Hinweis: Geräte-Daten hängen von NetAlertX/Pi.Alert APIs/DB ab und sind in dieser minimalen Suite-API aktuell nicht befüllt.
 
 #### `GET /stats`
 
 ```json
 {
-  "total_dns_logs": 1250,
-  "total_devices": 15,
-  "recent_queries": 89
+  "total_dns_logs": 89,
+  "total_devices": 0,
+  "recent_queries": 89,
+  "note": "DNS-Statistiken basieren auf Best-Effort Log-Parsing und können je nach Pi-hole-Logging/Rechten leer sein."
 }
 ```
 
