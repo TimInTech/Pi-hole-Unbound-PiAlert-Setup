@@ -22,9 +22,33 @@ RESOLV_CONF_BACKUP="/etc/resolv.conf.bak"
 PIHOLE_TOML="/etc/pihole/pihole.toml"
 
 # Ensure this script never blocks on sudo password prompts mid-run.
-# If running as root (typically via sudo), treat "sudo cmd" as just "cmd".
+# If running as root, emulate sudo while supporting common flags (e.g. -n)
+# and leading environment assignments (e.g. VAR=1 cmd).
 if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
-  sudo() { "$@"; }
+  sudo() {
+    # Drop common sudo flags in root-mode execution
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        -n|-E) shift ;;
+        -u) shift; shift ;;
+        --) shift; break ;;
+        -*) shift ;;
+        *) break ;;
+      esac
+    done
+
+    local envs=()
+    while [[ $# -gt 0 && "$1" == *=* ]]; do
+      envs+=("$1")
+      shift
+    done
+
+    if [[ ${#envs[@]} -gt 0 ]]; then
+      env "${envs[@]}" "$@"
+    else
+      "$@"
+    fi
+  }
 fi
 
 # Defaults (NOT readonly)
@@ -82,7 +106,7 @@ log_warning() {
 init_runtime_paths() {
   # Enforce: clone as normal user, execute via sudo.
   # (root shells like "su -" are intentionally rejected)
-  if [[ ${EUID:-$(id -u)} -eq 0 && -z "${SUDO_USER:-}" ]]; then
+  if [[ ${EUID:-$(id -u)} -eq 0 && ( -z "${SUDO_USER:-}" || "${SUDO_USER:-}" == "root" ) ]]; then
     echo "Do not run this installer as root directly." >&2
     echo "Clone the repo as a normal user and run it via: sudo ./install.sh" >&2
     exit 1
@@ -428,7 +452,7 @@ install_packages() {
 
   for _ in {1..3}; do
     if ! $DRY_RUN; then
-      sudo DEBIAN_FRONTEND=noninteractive apt-get install -y "${packages[@]}" && {
+      sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y "${packages[@]}" && {
         log_success "Packages installed"
         update_state PACKAGES_OK true
         return
@@ -697,7 +721,7 @@ setup_pihole_host() {
   if ! $DRY_RUN; then
     if ! command -v pihole &>/dev/null; then
       # Install Pi-hole non-interactively (SSH-safe)
-      curl -sSL https://install.pi-hole.net | sudo \
+      curl -sSL https://install.pi-hole.net | sudo env \
         PIHOLE_SKIP_OS_CHECK=true \
         PIHOLE_INSTALL_AUTO=true \
         DEBIAN_FRONTEND=noninteractive \
