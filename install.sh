@@ -56,7 +56,7 @@ CONTAINER_MODE=false
 DRY_RUN=false
 FORCE=false
 AUTO_REMOVE_CONFLICTS=false
-INSTALL_NETALERTX=true
+INSTALL_NETALERTX=false
 INSTALL_PYTHON_SUITE=true
 
 # Ports
@@ -301,6 +301,7 @@ parse_args() {
       # Default behavior is already idempotent; keep it as a no-op.
       --resume) : ;;
       --auto-remove-conflicts) AUTO_REMOVE_CONFLICTS=true ;;
+      --install-netalertx|--with-netalertx) INSTALL_NETALERTX=true ;;
       --skip-netalertx) INSTALL_NETALERTX=false ;;
       --skip-python-api) INSTALL_PYTHON_SUITE=false ;;
       --minimal) INSTALL_NETALERTX=false; INSTALL_PYTHON_SUITE=false ;;
@@ -1148,7 +1149,7 @@ main() {
   if [[ "$INSTALL_NETALERTX" == true ]]; then
     setup_netalertx
   else
-    log "⏭️  Skipping NetAlertX installation (--skip-netalertx)"
+    log "⏭️  Skipping NetAlertX installation (default; use --install-netalertx)"
     update_state NETALERTX_OK true
   fi
   

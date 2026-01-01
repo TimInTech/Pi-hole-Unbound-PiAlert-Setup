@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🛡️ Pi-hole + Unbound + NetAlertX
+# 🛡️ Pi-hole + Unbound
 ### **One-Click DNS Security & Monitoring Stack**
 
 [![Build Status](https://img.shields.io/github/actions/workflow/status/TimInTech/Pi-hole-Unbound-PiAlert-Setup/ci.yml?branch=main&style=for-the-badge&logo=github)](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/actions)
@@ -28,7 +28,7 @@
 ✅ **Zielplattform:** Raspberry Pi 3/4 (64-bit) mit Debian Bookworm/Trixie (inkl. Raspberry Pi OS)  
 ✅ **Ein-Klick-Installation** – Setup mit einem Befehl  
 ✅ **DNS-Sicherheit** – Pi-hole + Unbound mit DNSSEC (optional)  
-✅ **Netzwerk-Monitoring** – NetAlertX Geräte-Tracking (optional)  
+✅ **Netzwerk-Monitoring** – NetAlertX Geräte-Tracking (optional; separate Installation)  
 ✅ **API-Monitoring** – Python FastAPI + SQLite (optional)  
 ✅ **Produktionsbereit** – Systemd-Hardening & Auto-Restart  
 ✅ **Idempotent** – Sicher mehrfach ausführbar  
@@ -152,7 +152,11 @@ Wenn du eine **deutsche Ausgabe** siehst, läuft sehr wahrscheinlich nicht die R
 readlink -f ./scripts/post_install_check.sh
 ```
 
-**NetAlertX / Pi.Alert Next (Docker):** Dieses Repo betreibt NetAlertX als Docker-Container `netalertx`. Es ist normal, dass **kein systemd-Service** existiert. Dieses Setup nutzt **Host-Networking** (empfohlen für Device-Discovery), daher zeigt Docker oft kein `0.0.0.0:PORT->...` Port-Mapping. Netzwerkmodus prüfen:
+**NetAlertX / Pi.Alert Next (Docker):** Dieses Repo installiert NetAlertX im One-Click-Installer standardmäßig nicht mehr.
+Das Docker-Setup ist je nach System sehr sensibel (Mounts/tmpfs/Permissions).
+
+- Separate Installation über die Upstream-Doku: https://github.com/jokob-sk/NetAlertX/blob/main/docs/DOCKER_COMPOSE.md
+- Wenn du willst, dass der Installer es versucht: `sudo ./install.sh --install-netalertx` (best-effort).
 
 ```bash
 sudo docker inspect -f '{{.HostConfig.NetworkMode}}' netalertx
@@ -225,7 +229,7 @@ Zusammenfassung (Ampel)
 ```
 
 
-> Schlanke Installation? Nutze `--skip-netalertx`, `--skip-python-api` oder `--minimal`, um nur die Kernkomponenten zu installieren.
+> NetAlertX ist opt-in. Nutze `--install-netalertx`, wenn der Installer es versuchen soll (best-effort). Für eine schlanke Installation: `--skip-python-api` oder `--minimal`.
 
 ---
 
@@ -235,14 +239,14 @@ Zusammenfassung (Ampel)
 | ----------------- | --------------------------------- | ------------------------ | --------------------------------------------------------- |
 | **🕳️ Pi-hole**   | DNS-Werbeblocker & Web-Oberfläche | `http://[ihre-ip]/admin` | Core 6.1.4 / FTL 6.1 / Web 6.2 (eingebauter Webserver)   |
 | **🔐 Unbound**    | Rekursiver DNS + DNSSEC           | `127.0.0.1:5335`         | Optional; eigenen Upstream nutzen, falls Unbound entfällt |
-| **📡 NetAlertX**  | Netzwerkgeräte-Monitoring         | `http://[ihre-ip]:20211` | Optional (`--skip-netalertx`)                             |
+| **📡 NetAlertX**  | Netzwerkgeräte-Monitoring         | `http://[ihre-ip]:20211` | Optional (separat; oder `--install-netalertx`)             |
 | **🐍 Python API** | Monitoring- & Statistik-API       | `http://127.0.0.1:8090`  | Optional (`--skip-python-api` oder `--minimal`)           |
 
 
-**NetAlertX Datenpersistenz**
+**NetAlertX (optional)**
 
-- Der Container nutzt `/opt/netalertx/data` auf dem Host und mountet es nach `/data` im Container.
-- Wenn du vorher Legacy-Mounts (`/opt/netalertx/config` und `/opt/netalertx/db`) genutzt hast, migriere die Daten nach `/opt/netalertx/data`, bevor du den Container neu erstellst.
+NetAlertX wird separat installiert. Nutze die Upstream Docker-Compose-Doku: https://github.com/jokob-sk/NetAlertX/blob/main/docs/DOCKER_COMPOSE.md
+Wenn du willst, dass der Installer es versucht: `sudo ./install.sh --install-netalertx` (best-effort).
 
 ---
 
@@ -388,11 +392,10 @@ Hinweis: Geräte-Daten hängen von NetAlertX/Pi.Alert APIs/DB ab und sind in die
 3. **Custom Upstream** setzen: `127.0.0.1#5335`
 4. Geräte im Netzwerk konfigurieren, um Pi-hole als DNS-Server zu nutzen
 
-### NetAlertX-Setup
+### NetAlertX (optional)
 
-* Dashboard aufrufen: `http://[ihre-ip]:20211`
-* Scan-Zeitpläne und Benachrichtigungen konfigurieren
-* Netzwerk-Topologie und Geräteliste prüfen
+NetAlertX wird separat installiert. Upstream-Doku: https://github.com/jokob-sk/NetAlertX/blob/main/docs/DOCKER_COMPOSE.md
+Wenn du willst, dass der Installer es versucht: `sudo ./install.sh --install-netalertx` (best-effort).
 
 ---
 
@@ -408,7 +411,7 @@ Für automatisierte Checks verwende `./scripts/post_install_check.sh` (siehe Abs
 ✅ Unbound-Dienststatus und DNS-Auflösung
 ✅ Pi-hole FTL-Dienst und Port-53-Listener
 ✅ **Pi-hole v6 Upstream-Konfiguration** in `/etc/pihole/pihole.toml`
-✅ Docker-Container (NetAlertX, Pi.Alert)
+✅ Docker-Container-Checks (nur wenn NetAlertX installiert ist)
 ✅ Netzwerkkonfiguration und DNS-Einstellungen
 
 **Beispielausgabe (gekürzt; Ausgabe ist Englisch wie im Skript):**
