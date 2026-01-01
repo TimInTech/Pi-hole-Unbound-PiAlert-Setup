@@ -179,6 +179,9 @@ parse_args() {
       --container-mode) CONTAINER_MODE=true ;;
       --dry-run) DRY_RUN=true ;;
       --force) FORCE=true ;;
+      # Compatibility alias: some docs/older guidance referenced --resume.
+      # Default behavior is already idempotent; keep it as a no-op.
+      --resume) : ;;
       --auto-remove-conflicts) AUTO_REMOVE_CONFLICTS=true ;;
       --skip-netalertx) INSTALL_NETALERTX=false ;;
       --skip-python-api) INSTALL_PYTHON_SUITE=false ;;
@@ -221,12 +224,65 @@ handle_systemd_resolved() {
   fi
 }
 
+
 check_ports() {
   if [[ "$DRY_RUN" == true ]]; then
     log "DRY RUN: Would check ports $UNBOUND_PORT, $NETALERTX_PORT, $PYTHON_SUITE_PORT, 53"
     return 0
   fi
-  
+
+  # Idempotency: during re-runs it's expected that Unbound/Pi-hole/etc. are
+  # already bound to their ports. Only fail if a port is occupied by an
+  # unexpected service.
+  is_expected_listener() {
+    local port="$1"
+    local ss_line=""
+
+    if command -v ss >/dev/null 2>&1; then
+      ss_line="$(ss -H -ltnup "sport = :$port" 2>/dev/null || true)"
+    fi
+
+    if [[ "$port" == "$UNBOUND_PORT" ]]; then
+      if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet unbound 2>/dev/null; then
+        return 0
+      fi
+      echo "$ss_line" | grep -qi unbound && return 0
+    fi
+
+    if [[ "$port" == "53" && "$CONTAINER_MODE" == false ]]; then
+      if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet pihole-FTL 2>/dev/null; then
+        return 0
+      fi
+      echo "$ss_line" | grep -qiE 'pihole-FTL|pihole' && return 0
+    fi
+
+    if [[ "$port" == "$NETALERTX_PORT" && "${INSTALL_NETALERTX:-true}" == true ]]; then
+      if command -v docker >/dev/null 2>&1; then
+        docker ps --format '{{.Names}}' 2>/dev/null | grep -qx netalertx && return 0
+      fi
+    fi
+
+    if [[ "$port" == "$PYTHON_SUITE_PORT" && "$CONTAINER_MODE" == false && "${INSTALL_PYTHON_SUITE:-true}" == true ]]; then
+      if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet pihole-suite 2>/dev/null; then
+        return 0
+      fi
+      echo "$ss_line" | grep -qiE 'pihole-suite|uvicorn|python' && return 0
+    fi
+
+    return 1
+  }
+
+  port_is_in_use() {
+    local port="$1"
+    if command -v ss &>/dev/null; then
+      ss -tuln 2>/dev/null | grep -q "\:$port "
+    elif command -v netstat &>/dev/null; then
+      netstat -tuln 2>/dev/null | grep -q "\:$port "
+    else
+      return 1
+    fi
+  }
+
   local ports=("$UNBOUND_PORT" "53")
   [[ "$INSTALL_NETALERTX" == true ]] && ports+=("$NETALERTX_PORT")
   [[ "$INSTALL_PYTHON_SUITE" == true ]] && ports+=("$PYTHON_SUITE_PORT")
@@ -235,10 +291,11 @@ check_ports() {
   fi
 
   for port in "${ports[@]}"; do
-    if command -v ss &>/dev/null && ss -tuln | grep -q ":$port "; then
-      log_error "Port $port in use"
-      return 1
-    elif command -v netstat &>/dev/null && netstat -tuln | grep -q ":$port "; then
+    if port_is_in_use "$port"; then
+      if is_expected_listener "$port"; then
+        log "✅ Port $port already in use (expected)"
+        continue
+      fi
       log_error "Port $port in use"
       return 1
     fi
