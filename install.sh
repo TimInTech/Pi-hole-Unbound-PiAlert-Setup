@@ -215,6 +215,12 @@ validate_state_against_system() {
         log_warning "State override: PIHOLE_OK=true but pihole-FTL service not active"
         update_state PIHOLE_OK false
         changed=true
+      elif command -v dig >/dev/null 2>&1; then
+        if ! dig +time=2 +tries=1 +short @127.0.0.1 example.com A | grep -qE '^[0-9.]+$'; then
+          log_warning "State override: PIHOLE_OK=true but Pi-hole DNS not resolving"
+          update_state PIHOLE_OK false
+          changed=true
+        fi
       fi
     fi
   fi
@@ -225,10 +231,18 @@ validate_state_against_system() {
       log_warning "State override: NETALERTX_OK=true but docker missing"
       update_state NETALERTX_OK false
       changed=true
-    elif ! sudo -n docker ps 2>/dev/null | grep -q '\bnetalertx\b'; then
-      log_warning "State override: NETALERTX_OK=true but netalertx container missing"
-      update_state NETALERTX_OK false
-      changed=true
+    else
+      local netalertx_status
+      netalertx_status="$(sudo -n docker ps --filter name=^/netalertx$ --format '{{.Status}}' 2>/dev/null | head -n1 || true)"
+      if [[ -z "$netalertx_status" ]]; then
+        log_warning "State override: NETALERTX_OK=true but netalertx container missing"
+        update_state NETALERTX_OK false
+        changed=true
+      elif [[ "$netalertx_status" != Up* ]]; then
+        log_warning "State override: NETALERTX_OK=true but netalertx not running (status: $netalertx_status)"
+        update_state NETALERTX_OK false
+        changed=true
+      fi
     fi
   fi
 
@@ -322,6 +336,30 @@ handle_systemd_resolved() {
     fi
   fi
 }
+
+ensure_system_dns_for_docker() {
+  # Docker image pulls depend on the host resolver. If the host is already configured
+  # to use 127.0.0.1 but Pi-hole DNS isn't ready yet, Docker will fail to resolve.
+  [[ "$DRY_RUN" == true ]] && return 0
+
+  command -v getent >/dev/null 2>&1 || return 0
+
+  # If resolution works, nothing to do
+  if getent ahostsv4 registry-1.docker.io >/dev/null 2>&1; then
+    return 0
+  fi
+
+  # If /etc/resolv.conf points to localhost, temporarily restore a working resolver
+  if grep -qE '^[[:space:]]*nameserver[[:space:]]+127\.0\.0\.1([[:space:]]|$)' "$RESOLV_CONF" 2>/dev/null; then
+    log_warning "Host resolver points to 127.0.0.1 but cannot resolve registry-1.docker.io; temporarily restoring resolver for Docker"
+    if [[ -f "$RESOLV_CONF_BACKUP" ]]; then
+      sudo cp -f "$RESOLV_CONF_BACKUP" "$RESOLV_CONF" 2>/dev/null || true
+    else
+      echo "nameserver 1.1.1.1" | sudo tee "$RESOLV_CONF" >/dev/null
+    fi
+  fi
+}
+
 configure_local_dns_resolver() {
   # Keep system DNS stable during installation (e.g. for Docker pulls).
   # Only switch /etc/resolv.conf to 127.0.0.1 once Pi-hole is confirmed working.
@@ -837,6 +875,7 @@ setup_pihole_host() {
 setup_pihole_container() {
   if ! $DRY_RUN; then
     ensure_docker_service
+    ensure_system_dns_for_docker
     
     # Remove existing Pi-hole container if it exists
     sudo docker rm -f pihole 2>/dev/null || true
@@ -877,6 +916,7 @@ setup_netalertx() {
 
   if ! $DRY_RUN; then
     ensure_docker_service
+    ensure_system_dns_for_docker
     
     # Remove existing NetAlertX container if it exists
     sudo docker rm -f netalertx 2>/dev/null || true
