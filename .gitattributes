@@ -1,0 +1,28 @@
+# =============================================
+# GIT ATTRIBUTES - Line Ending Enforcement
+# =============================================
+
+# Shell scripts: enforce LF line endings
+*.sh text eol=lf
+
+# Markdown files: enforce LF
+*.md text eol=lf
+
+# Python files: enforce LF
+*.py text eol=lf
+
+# Config files: enforce LF
+*.conf text eol=lf
+*.toml text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Binary files: no line ending conversion
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.db binary
+*.sqlite binary

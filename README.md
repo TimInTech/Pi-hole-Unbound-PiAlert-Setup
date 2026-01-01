@@ -47,6 +47,58 @@ chmod +x install.sh
 sudo ./install.sh
 ````
 
+
+
+## 🔴 Required Step: Ensure Pi-hole Uses Unbound (Upstream DNS)
+
+> ⚠️ **Important — do NOT skip this.** If Pi-hole does not use Unbound as its upstream, this stack is **functionally broken** (DNSSEC/DoT will be bypassed).
+
+### What you must ensure
+
+Pi-hole must forward DNS queries to Unbound running locally on port **5335**:
+
+```text
+Client → Pi-hole → Unbound → Internet
+```
+
+**Required upstream value:**
+
+```text
+127.0.0.1#5335
+```
+
+### How this repo behaves
+
+- When you run `sudo ./install.sh` (default), the installer configures Pi-hole v6 upstreams automatically in `/etc/pihole/pihole.toml`.
+- If you install Pi-hole manually (interactive installer), or you change DNS settings later, you **must** set the upstream to `127.0.0.1#5335` yourself.
+
+### If you see the installer dialog
+
+If Pi-hole asks you to **Specify Upstream DNS Provider(s)**, choose **Custom** and enter:
+
+```text
+127.0.0.1#5335
+```
+
+If you select Google/Cloudflare (or any public DNS):
+
+- ❌ Unbound will NOT be used
+- ❌ DNSSEC / DoT will be bypassed
+- ❌ The setup is technically “installed” but logically wrong
+
+### Verify after installation
+
+```bash
+sudo grep -A5 '^\[dns\]' /etc/pihole/pihole.toml
+```
+
+Expected:
+
+```toml
+[dns]
+upstreams = ["127.0.0.1#5335"]
+```
+
 **Done!** 🎉 Your complete DNS security stack is now running.
 
 > Prefer a slim install? Use `--skip-netalertx`, `--skip-python-api`, or `--minimal` to omit optional components.
@@ -175,7 +227,103 @@ curl -H "X-API-Key: your-api-key" http://127.0.0.1:8090/endpoint
 
 ## 🧪 Health Checks & Troubleshooting
 
-### Quick Checks
+### Post-Install Check Script
+
+Run the automated post-install verification script to check your setup:
+
+```bash
+# Interactive menu (recommended)
+sudo ./scripts/post_install_check.sh
+
+# Quick check (summary only)
+sudo ./scripts/post_install_check.sh --quick
+
+# Full comprehensive check
+sudo ./scripts/post_install_check.sh --full
+
+# Show service URLs
+./scripts/post_install_check.sh --urls
+```
+
+**What it checks:**
+
+✅ System information (OS, network, routes)
+✅ Unbound service status and DNS resolution
+✅ Pi-hole FTL service and port 53 listener
+✅ **Pi-hole v6 upstream configuration** in `/etc/pihole/pihole.toml`
+✅ Docker containers (NetAlertX, Pi.Alert)
+✅ Network configuration and DNS settings
+
+**Example output:**
+
+```
+=== Pi-hole v6 Configuration ===
+[PASS] Pi-hole v6 config file exists: /etc/pihole/pihole.toml
+[PASS] Pi-hole v6 upstreams configured: upstreams = ["127.0.0.1#5335"]
+
+┌─────────────────────────────────────────────────────────────────┐
+│                         Check Summary                           │
+├─────────────────────────────────────────────────────────────────┤
+│ PASS: 12                                                        │
+│ WARN: 1                                                         │
+│ FAIL: 0                                                         │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Status meanings:**
+
+* **[PASS]** - Component is working correctly
+* **[WARN]** - Component may need attention but system is functional
+* **[FAIL]** - Critical issue detected, requires action
+
+> **Note:** Running with `sudo` is recommended for complete checks. The script performs read-only operations and does not modify any configuration.
+
+### Pi-hole v6 Configuration Note
+
+**Pi-hole v6** uses `/etc/pihole/pihole.toml` as the **authoritative configuration file** for all settings, including DNS upstreams. The installer automatically configures:
+
+```toml
+[dns]
+upstreams = ["127.0.0.1#5335"]
+```
+
+This ensures Pi-hole v6 always uses Unbound as its DNS upstream. The legacy `setupVars.conf` is maintained for backward compatibility but is not the primary configuration source in v6.
+
+To verify your Pi-hole v6 upstream configuration:
+
+```bash
+# Check the authoritative config
+sudo grep -A2 '^\[dns\]' /etc/pihole/pihole.toml
+
+# Or use the post-install check script
+sudo ./scripts/post_install_check.sh --full
+```
+
+### Interactive Console Menu
+
+Access all verification and maintenance tools through an interactive menu:
+
+```bash
+# Start the console menu
+./scripts/console_menu.sh
+
+# Or create an alias for convenience
+echo "alias pihole-suite='bash ~/Pi-hole-Unbound-PiAlert-Setup/scripts/console_menu.sh'" >> ~/.bash_aliases
+source ~/.bash_aliases
+pihole-suite
+```
+
+The console menu provides:
+- Quick and full system checks
+- Service URL display
+- Manual verification steps guide
+- Maintenance Pro access (with confirmations)
+- Log viewing
+- Dialog-based UI (if installed) or text fallback
+
+See [docs/CONSOLE_MENU.md](docs/CONSOLE_MENU.md) for detailed usage.
+
+### Quick Manual Checks
 
 ```bash
 dig @127.0.0.1 -p 5335 example.com     # Test Unbound
@@ -197,9 +345,9 @@ docker ps
 
 | Issue                                | Solution                                                                                                     |
 | ------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
-| **Port 53 in use (systemd-resolved)**| `sudo systemctl disable --now systemd-resolved`; re-run `./install.sh --resume`. See `Pi-hole-v6.0---Comprehensive-Guide/TROUBLESHOOTING.md` for port 53 checks. |
-| **FTL DB/UI corruption after upgrade** | Use `Pi-hole-v6.0---Comprehensive-Guide/scripts/fix-ftl-db.sh` or `scripts/fix-ui-403.sh`, then `pihole restartdns`. |
-| **DNS outages / upstream failing**   | Verify Unbound with `dig @127.0.0.1 -p 5335 example.com`; reapply config with `./install.sh --force`; run `Pi-hole-v6.0---Comprehensive-Guide/scripts/v6-upgrade-check.sh`. |
+| **Port 53 in use (systemd-resolved)**| `sudo systemctl disable --now systemd-resolved`; re-run `./install.sh --resume`. Check with `sudo ss -tulpen | grep :53`. |
+| **FTL DB/UI corruption after upgrade** | Check logs with `sudo journalctl -u pihole-FTL -n 50`, then restart: `sudo systemctl restart pihole-FTL`. |
+| **DNS outages / upstream failing**   | Verify Unbound with `dig @127.0.0.1 -p 5335 example.com`; check config with `./scripts/post_install_check.sh --full`; reapply with `./install.sh --force`. |
 | **Missing API key**                  | Check `.env` file or regenerate with installer (`SUITE_API_KEY`).                                            |
 
 ---

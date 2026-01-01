@@ -46,6 +46,58 @@ chmod +x install.sh
 sudo ./install.sh
 ````
 
+
+
+## 🔴 ZWINGEND erforderlich: Pi-hole muss Unbound als Upstream nutzen
+
+> ⚠️ **Achtung — diesen Schritt nicht überspringen.** Wenn Pi-hole nicht Unbound als Upstream nutzt, ist das Setup **fachlich kaputt** (DNSSEC/DoT werden umgangen).
+
+### Was zwingend sichergestellt werden muss
+
+Pi-hole muss DNS-Anfragen an Unbound weiterleiten (lokal auf Port **5335**):
+
+```text
+Client → Pi-hole → Unbound → Internet
+```
+
+**Erforderlicher Upstream-Wert:**
+
+```text
+127.0.0.1#5335
+```
+
+### Verhalten dieses Repos
+
+- Wenn du `sudo ./install.sh` ausführst (Standard), setzt der Installer die Pi-hole-v6-Upstreams automatisch in `/etc/pihole/pihole.toml`.
+- Wenn du Pi-hole manuell installierst (interaktiver Installer) oder später DNS-Einstellungen änderst, musst du den Upstream **selbst** auf `127.0.0.1#5335` setzen.
+
+### Wenn der Installer-Dialog erscheint
+
+Wenn Pi-hole dich nach **Upstream DNS Provider(s)** fragt, wähle **Custom** und trage ein:
+
+```text
+127.0.0.1#5335
+```
+
+Wenn stattdessen Google/Cloudflare (oder ein anderer Public DNS) gewählt wird:
+
+- ❌ Unbound wird **nicht** genutzt
+- ❌ DNSSEC / DoT sind wirkungslos
+- ❌ Setup wirkt „fertig“, ist aber logisch falsch
+
+### Kontrolle nach der Installation
+
+```bash
+sudo grep -A5 '^\[dns\]' /etc/pihole/pihole.toml
+```
+
+Erwartet:
+
+```toml
+[dns]
+upstreams = ["127.0.0.1#5335"]
+```
+
 **Fertig!** 🎉 Ihr kompletter DNS-Sicherheits-Stack läuft jetzt.
 
 > Schlanke Installation? Nutze `--skip-netalertx`, `--skip-python-api` oder `--minimal`, um nur die Kernkomponenten zu installieren.
@@ -188,7 +240,103 @@ curl -H "X-API-Key: $SUITE_API_KEY" http://127.0.0.1:8090/endpoint
 
 ## 🧪 Gesundheitschecks & Problembehandlung
 
-### Schneller Gesundheitscheck
+### Post-Install-Prüfskript
+
+Führen Sie das automatisierte Verifizierungsskript aus, um Ihre Installation zu überprüfen:
+
+```bash
+# Interaktives Menü (empfohlen)
+sudo ./scripts/post_install_check.sh
+
+# Schnellprüfung (nur Zusammenfassung)
+sudo ./scripts/post_install_check.sh --quick
+
+# Vollständige Prüfung
+sudo ./scripts/post_install_check.sh --full
+
+# Service-URLs anzeigen
+./scripts/post_install_check.sh --urls
+```
+
+**Was wird geprüft:**
+
+✅ Systeminformationen (OS, Netzwerk, Routen)
+✅ Unbound-Dienststatus und DNS-Auflösung
+✅ Pi-hole FTL-Dienst und Port-53-Listener
+✅ **Pi-hole v6 Upstream-Konfiguration** in `/etc/pihole/pihole.toml`
+✅ Docker-Container (NetAlertX, Pi.Alert)
+✅ Netzwerkkonfiguration und DNS-Einstellungen
+
+**Beispielausgabe:**
+
+```
+=== Pi-hole v6 Configuration ===
+[PASS] Pi-hole v6 config file exists: /etc/pihole/pihole.toml
+[PASS] Pi-hole v6 upstreams configured: upstreams = ["127.0.0.1#5335"]
+
+┌─────────────────────────────────────────────────────────────────┐
+│                         Check Summary                           │
+├─────────────────────────────────────────────────────────────────┤
+│ PASS: 12                                                        │
+│ WARN: 1                                                         │
+│ FAIL: 0                                                         │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Status-Bedeutungen:**
+
+* **[PASS]** - Komponente funktioniert korrekt
+* **[WARN]** - Komponente benötigt möglicherweise Aufmerksamkeit, System ist aber funktionsfähig
+* **[FAIL]** - Kritisches Problem erkannt, Maßnahme erforderlich
+
+> **Hinweis:** Die Ausführung mit `sudo` wird für vollständige Prüfungen empfohlen. Das Skript führt nur Nur-Lese-Operationen aus und ändert keine Konfiguration.
+
+### Pi-hole v6 Konfigurationshinweis
+
+**Pi-hole v6** verwendet `/etc/pihole/pihole.toml` als **maßgebliche Konfigurationsdatei** für alle Einstellungen, einschließlich DNS-Upstreams. Der Installer konfiguriert automatisch:
+
+```toml
+[dns]
+upstreams = ["127.0.0.1#5335"]
+```
+
+Dies stellt sicher, dass Pi-hole v6 immer Unbound als DNS-Upstream verwendet. Die veraltete `setupVars.conf` wird für Rückwärtskompatibilität beibehalten, ist aber nicht die primäre Konfigurationsquelle in v6.
+
+Um Ihre Pi-hole v6 Upstream-Konfiguration zu überprüfen:
+
+```bash
+# Maßgebliche Konfiguration prüfen
+sudo grep -A2 '^\[dns\]' /etc/pihole/pihole.toml
+
+# Oder das Post-Install-Prüfskript verwenden
+sudo ./scripts/post_install_check.sh --full
+```
+
+### Interaktives Konsolenmenü
+
+Zugriff auf alle Verifizierungs- und Wartungstools über ein interaktives Menü:
+
+```bash
+# Konsolenmenü starten
+./scripts/console_menu.sh
+
+# Oder einen Alias für mehr Komfort erstellen
+echo "alias pihole-suite='bash ~/Pi-hole-Unbound-PiAlert-Setup/scripts/console_menu.sh'" >> ~/.bash_aliases
+source ~/.bash_aliases
+pihole-suite
+```
+
+Das Konsolenmenü bietet:
+- Schnell- und Vollprüfungen
+- Anzeige der Service-URLs
+- Leitfaden für manuelle Verifizierung
+- Zugriff auf Maintenance Pro (mit Bestätigungen)
+- Log-Ansicht
+- Dialog-basierte UI (falls installiert) oder Text-Fallback
+
+Siehe [docs/CONSOLE_MENU.md](docs/CONSOLE_MENU.md) für detaillierte Nutzung.
+
+### Schneller manueller Gesundheitscheck
 
 ```bash
 # Unbound testen
@@ -216,8 +364,8 @@ journalctl -u pihole-suite -f
 journalctl -u unbound -f
 
 # Services neustarten
-systemctl restart pihole-suite
-pihole restartdns
+sudo systemctl restart pihole-suite
+sudo systemctl restart pihole-FTL
 docker restart netalertx
 ```
 
@@ -225,9 +373,9 @@ docker restart netalertx
 
 | Problem                                  | Lösung                                                                                                                                   |
 | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| **Port 53 belegt (systemd-resolved)**    | `sudo systemctl disable --now systemd-resolved`; danach `./install.sh --resume` ausführen. Details: `Pi-hole-v6.0---Comprehensive-Guide/TROUBLESHOOTING.md`. |
-| **FTL-DB/UI-Korruption nach Upgrade**    | `Pi-hole-v6.0---Comprehensive-Guide/scripts/fix-ftl-db.sh` bzw. `scripts/fix-ui-403.sh` ausführen, danach `pihole restartdns`.           |
-| **DNS-Ausfälle / Upstream-Fehler**       | `dig @127.0.0.1 -p 5335 example.com`; bei Problemen `./install.sh --force` erneut anwenden und `Pi-hole-v6.0---Comprehensive-Guide/scripts/v6-upgrade-check.sh` laufen lassen. |
+| **Port 53 belegt (systemd-resolved)**    | `sudo systemctl disable --now systemd-resolved`; danach `./install.sh --resume` ausführen. Prüfen mit `sudo ss -tulpen | grep :53`. |
+| **FTL-DB/UI-Korruption nach Upgrade**    | Logs prüfen mit `sudo journalctl -u pihole-FTL -n 50`, dann neustarten: `sudo systemctl restart pihole-FTL`.           |
+| **DNS-Ausfälle / Upstream-Fehler**       | `dig @127.0.0.1 -p 5335 example.com`; Konfiguration prüfen mit `./scripts/post_install_check.sh --full`; bei Problemen `./install.sh --force` erneut anwenden. |
 | **API-Key fehlt**                        | `.env` prüfen oder mit dem Installer neu generieren (`SUITE_API_KEY`).                                                                   |
 
 ---
