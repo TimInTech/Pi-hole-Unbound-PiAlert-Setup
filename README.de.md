@@ -46,6 +46,22 @@ chmod +x install.sh
 sudo ./install.sh
 ````
 
+## ✅ Voraussetzungen
+
+- Unterstützt: Debian/Ubuntu-Familie mit `apt-get` und `systemd`.
+- Repo als normaler User klonen (kein `sudo git clone` / nicht aus einer root-Shell arbeiten).
+- Installer via `sudo ./install.sh` ausführen (direkt als root wird absichtlich abgewiesen).
+
+Der Installer schreibt:
+- Logs: `/var/log/pihole-suite/install.log` und `/var/log/pihole-suite/install_errors.log`
+- Suite-Env (API-Key): `/etc/pihole-suite/pihole-suite.env`
+
+Wenn du Abhängigkeiten manuell installieren willst:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y git curl jq dnsutils iproute2 openssl python3 python3-venv python3-pip ca-certificates
+```
 
 
 ## 🔴 ZWINGEND erforderlich: Pi-hole muss Unbound als Upstream nutzen
@@ -279,13 +295,13 @@ Hinweis: `lease_start` ist ggf. `null` (nicht in allen Lease-Dateien verfügbar)
 
 ### Authentifizierung
 
-Der Installer generiert den API-Key in `.env` (`SUITE_API_KEY`). Du kannst ihn mit `sudo cat .env` ansehen.
+Der Installer generiert den API-Key in `/etc/pihole-suite/pihole-suite.env` (`SUITE_API_KEY`). Du kannst ihn mit `sudo cat /etc/pihole-suite/pihole-suite.env` ansehen.
 
 ### Smoke-Test
 
 ```bash
-# API-Key aus .env laden (wird vom Installer erzeugt)
-SUITE_API_KEY="$(sudo awk -F= '/^SUITE_API_KEY=/{print $2}' .env)"
+# API-Key aus der Installer-Env-Datei laden
+SUITE_API_KEY="$(sudo awk -F= '/^SUITE_API_KEY=/{print $2}' /etc/pihole-suite/pihole-suite.env)"
 
 # Sicherstellen, dass der Dienst läuft
 sudo systemctl restart pihole-suite

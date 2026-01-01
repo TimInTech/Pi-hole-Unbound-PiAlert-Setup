@@ -47,6 +47,22 @@ chmod +x install.sh
 sudo ./install.sh
 ````
 
+## ✅ Prerequisites
+
+- Supported: Debian/Ubuntu-family systems with `apt-get` and `systemd`.
+- Clone as a normal user (do **not** run `sudo git clone` / do not work from a root shell).
+- Run the installer via `sudo ./install.sh` (running as root directly is rejected on purpose).
+
+The installer writes:
+- Logs: `/var/log/pihole-suite/install.log` and `/var/log/pihole-suite/install_errors.log`
+- Suite env (API key): `/etc/pihole-suite/pihole-suite.env`
+
+If you want to install prerequisites manually:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y git curl jq dnsutils iproute2 openssl python3 python3-venv python3-pip ca-certificates
+```
 
 
 ## 🔴 Required Step: Ensure Pi-hole Uses Unbound (Upstream DNS)
@@ -298,13 +314,13 @@ Optional hard proof (if tcpdump installed):
 
 ### Authentication
 
-The installer generates an API key in `.env` (`SUITE_API_KEY`). You can inspect it with `sudo cat .env`.
+The installer generates an API key in `/etc/pihole-suite/pihole-suite.env` (`SUITE_API_KEY`). You can inspect it with `sudo cat /etc/pihole-suite/pihole-suite.env`.
 
 ### Smoke Test
 
 ```bash
-# Load API key from .env (created by the installer)
-SUITE_API_KEY="$(sudo awk -F= '/^SUITE_API_KEY=/{print $2}' .env)"
+# Load API key from the installer env file
+SUITE_API_KEY="$(sudo awk -F= '/^SUITE_API_KEY=/{print $2}' /etc/pihole-suite/pihole-suite.env)"
 
 # Ensure the service is running
 sudo systemctl restart pihole-suite
@@ -519,10 +535,10 @@ docker ps
 
 | Issue                                | Solution                                                                                                     |
 | ------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
-| **Port 53 in use (systemd-resolved)**| `sudo systemctl disable --now systemd-resolved`; re-run `./install.sh --resume`. Check with `sudo ss -tulpen | grep :53`. |
+| **Port 53 in use (systemd-resolved)**| `sudo systemctl disable --now systemd-resolved`; re-run `sudo ./install.sh`. Check with `sudo ss -tulpen | grep :53`. |
 | **FTL DB/UI corruption after upgrade** | Check logs with `sudo journalctl -u pihole-FTL -n 50`, then restart: `sudo systemctl restart pihole-FTL`. |
 | **DNS outages / upstream failing**   | Verify Unbound with `dig @127.0.0.1 -p 5335 example.com`; check config with `./scripts/post_install_check.sh --full`; reapply with `./install.sh --force`. |
-| **Missing API key**                  | Check `.env` file or regenerate with installer (`SUITE_API_KEY`).                                            |
+| **Missing API key**                  | Check `/etc/pihole-suite/pihole-suite.env` or re-run the installer to regenerate (`SUITE_API_KEY`).                                            |
 
 ---
 
@@ -530,7 +546,7 @@ docker ps
 
 ### 🔐 API Security
 
-* Auto-generated API keys (16-byte hex)
+* Auto-generated API keys (32-byte hex)
 * CORS restricted to localhost
 * Authentication required for all endpoints
 

@@ -7,13 +7,25 @@ set -o pipefail
 # GLOBAL VARIABLES
 # =============================================
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
-LOG_FILE="${SCRIPT_DIR}/install.log"
-ERROR_LOG="${SCRIPT_DIR}/install_errors.log"
-STATE_FILE="${SCRIPT_DIR}/data/install.state"
-ENV_FILE="${SCRIPT_DIR}/.env"
+
+# Stable paths (avoid writing root-owned files into the git repo)
+LOG_DIR="/var/log/pihole-suite"
+STATE_DIR="/var/lib/pihole-suite"
+ENV_DIR="/etc/pihole-suite"
+
+LOG_FILE="${LOG_DIR}/install.log"
+ERROR_LOG="${LOG_DIR}/install_errors.log"
+STATE_FILE="${STATE_DIR}/install.state"
+ENV_FILE="${ENV_DIR}/pihole-suite.env"
 RESOLV_CONF="/etc/resolv.conf"
 RESOLV_CONF_BACKUP="/etc/resolv.conf.bak"
 PIHOLE_TOML="/etc/pihole/pihole.toml"
+
+# Ensure this script never blocks on sudo password prompts mid-run.
+# If running as root (typically via sudo), treat "sudo cmd" as just "cmd".
+if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
+  sudo() { "$@"; }
+fi
 
 # Defaults (NOT readonly)
 CONTAINER_MODE=false
@@ -695,22 +707,16 @@ setup_pihole_host() {
         log_error "Pi-hole install failed"; exit 1;
       }
     fi
-    
-    # Wait for Pi-hole setup to complete and configuration file to be created
-    for i in {1..30}; do
-      if [[ -f /etc/pihole/setupVars.conf ]]; then
-        break
-      fi
-      log "Waiting for Pi-hole setup to complete... ($i/30)"
+
+
+    # Wait briefly for Pi-hole FTL to come up (avoid racing immediately after install)
+    for _ in {1..30}; do
+      systemctl is-active --quiet pihole-FTL 2>/dev/null && break
       sleep 2
     done
-    
+
     if [[ -f /etc/pihole/setupVars.conf ]]; then
-      sudo sed -i "s/^PIHOLE_DNS_1=.*/PIHOLE_DNS_1=127.0.0.1#$UNBOUND_PORT/" /etc/pihole/setupVars.conf
-      sudo sed -i "s/^PIHOLE_DNS_2=.*/PIHOLE_DNS_2=/" /etc/pihole/setupVars.conf
-      log "Updated legacy setupVars.conf for backward compatibility"
-    else
-      log_warning "Pi-hole setupVars.conf not found (OK for v6, uses pihole.toml)"
+      log_warning "Legacy setupVars.conf present; Pi-hole v6 uses pihole.toml (no changes applied)."
     fi
     if [[ -f "$PIHOLE_TOML" ]]; then
       log "Detected pihole.toml at $PIHOLE_TOML (v6.1.4+ built-in web server)"
@@ -776,13 +782,20 @@ setup_netalertx() {
     # Remove existing NetAlertX container if it exists
     sudo docker rm -f netalertx 2>/dev/null || true
     
-    # Create data directories
-    sudo mkdir -p /opt/netalertx/{config,db}
-    sudo chmod 755 /opt/netalertx /opt/netalertx/config /opt/netalertx/db
+    # Create data directory (NetAlertX expects /data)
+    sudo mkdir -p /opt/netalertx/data
+    sudo chmod 755 /opt/netalertx /opt/netalertx/data
+
+    # Detect legacy mounts and warn about migration
+    if [[ -d /opt/netalertx/config || -d /opt/netalertx/db ]]; then
+      if [[ -n "$(ls -A /opt/netalertx/config 2>/dev/null || true)" || -n "$(ls -A /opt/netalertx/db 2>/dev/null || true)" ]]; then
+        log_warning "Detected legacy NetAlertX data dirs (/opt/netalertx/config,/opt/netalertx/db). New installs use /opt/netalertx/data mounted to /data; migrate your data if needed."
+      fi
+    fi
     
     log "Creating NetAlertX container..."
     sudo docker run -d --name netalertx -p $NETALERTX_PORT:20211 \
-      -v /opt/netalertx/config:/app/config -v /opt/netalertx/db:/app/db \
+      -v /opt/netalertx/data:/data \
       -e TZ=UTC --restart unless-stopped jokobsk/netalertx:latest || {
       log_error "NetAlertX container failed to start"; exit 1;
     }
@@ -816,15 +829,18 @@ setup_python_suite() {
   if ! $DRY_RUN; then
     local suite_user="pihole-suite"
     local suite_group="pihole-suite"
-    local suite_state_dir="/var/lib/pihole-suite"
+    local suite_state_dir="$STATE_DIR"
+    local suite_data_dir="$STATE_DIR/data"
     local suite_entrypoint="$SCRIPT_DIR/start_suite.py"
 
-    mkdir -p "$SCRIPT_DIR/data"
+    sudo mkdir -p "$suite_data_dir"
     if [[ ! -f "$ENV_FILE" ]] || ! grep -q '^SUITE_API_KEY=' "$ENV_FILE"; then
-      echo "SUITE_API_KEY=$(openssl rand -hex 16)" > "$ENV_FILE"
+      echo "SUITE_API_KEY=$(openssl rand -hex 32)" > "$ENV_FILE"
     fi
     grep -q '^SUITE_PORT=' "$ENV_FILE" 2>/dev/null || echo "SUITE_PORT=$PYTHON_SUITE_PORT" >> "$ENV_FILE"
-    grep -q '^SUITE_DATA_DIR=' "$ENV_FILE" 2>/dev/null || echo "SUITE_DATA_DIR=$SCRIPT_DIR/data" >> "$ENV_FILE"
+    grep -q '^UNBOUND_PORT=' "$ENV_FILE" 2>/dev/null || echo "UNBOUND_PORT=$UNBOUND_PORT" >> "$ENV_FILE"
+    grep -q '^NETALERTX_PORT=' "$ENV_FILE" 2>/dev/null || echo "NETALERTX_PORT=$NETALERTX_PORT" >> "$ENV_FILE"
+    grep -q '^SUITE_DATA_DIR=' "$ENV_FILE" 2>/dev/null || echo "SUITE_DATA_DIR=$suite_data_dir" >> "$ENV_FILE"
     grep -q '^SUITE_LOG_LEVEL=' "$ENV_FILE" 2>/dev/null || echo "SUITE_LOG_LEVEL=INFO" >> "$ENV_FILE"
 
     if ! getent group "$suite_group" >/dev/null 2>&1; then

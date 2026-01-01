@@ -346,7 +346,7 @@ check_unbound() {
 
   # DNS resolution test
   if command -v dig &>/dev/null; then
-    if dig +short @127.0.0.1 -p ${unbound_port} cloudflare.com +time=5 2>/dev/null | grep -qE '^[0-9.]+$'; then
+    if dig +short @127.0.0.1 -p ${unbound_port} cloudflare.com +time=1 +tries=1 2>/dev/null | grep -qE '^[0-9.]+$'; then
       pass "Unbound resolves cloudflare.com"
     else
       fail "Unbound cannot resolve cloudflare.com"
@@ -591,6 +591,11 @@ get_service_urls() {
   fi
 
   echo "└─────────────────────────────────────────────────────────────────┘"
+  # Python Suite (optional)
+  if systemctl is-active --quiet pihole-suite 2>/dev/null; then
+    printf "│ %-63s │\n" "Python Suite API: http://127.0.0.1:8090"
+  fi
+
   echo ""
 }
 
