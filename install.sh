@@ -341,7 +341,7 @@ configure_local_dns_resolver() {
 
   # Verify Pi-hole can resolve; if not, restore previous resolver to avoid breaking the host.
   if command -v dig >/dev/null 2>&1; then
-    if ! dig +time=2 +tries=1 @127.0.0.1 example.com >/dev/null 2>&1; then
+    if ! dig +time=2 +tries=1 +short @127.0.0.1 example.com A | grep -qE '^[0-9.]+$'; then
       log_warning "Local DNS (127.0.0.1) not resolving yet; restoring previous $RESOLV_CONF"
       [[ -f "$RESOLV_CONF_BACKUP" ]] && sudo cp -f "$RESOLV_CONF_BACKUP" "$RESOLV_CONF" 2>/dev/null || true
       return 0
@@ -690,6 +690,22 @@ configure_pihole_v6_toml_upstreams() {
   sudo cp -a "$toml_file" "$backup_file"
   log "Backup created: $backup_file"
 
+
+  local upstream="127.0.0.1#${UNBOUND_PORT}"
+  local configured=false
+
+  # Prefer FTL CLI config (does validation and writes correct TOML)
+  if command -v pihole-FTL >/dev/null 2>&1; then
+    log "Setting Pi-hole upstream via pihole-FTL --config (dns.upstreams)..."
+    if sudo pihole-FTL --config dns.upstreams "[ \"${upstream}\" ]" >/dev/null 2>&1; then
+      configured=true
+      log_success "Configured dns.upstreams via pihole-FTL"
+    else
+      log_warning "pihole-FTL --config failed; falling back to TOML rewrite"
+    fi
+  fi
+
+  if [[ "$configured" != true ]]; then
   # Single-pass awk rewrite: ensure [dns] exists, remove old upstreams, insert new upstream
   sudo awk -v upstream="127.0.0.1#${UNBOUND_PORT}" '
     BEGIN { in_dns=0; dns_exists=0; dns_written=0 }
@@ -734,6 +750,8 @@ configure_pihole_v6_toml_upstreams() {
   sudo chown pihole:pihole "$toml_file"
   sudo chmod 0644 "$toml_file"
 
+  fi
+
   log "Configured DNS upstreams in $toml_file"
 
   # Restart pihole-FTL
@@ -741,6 +759,23 @@ configure_pihole_v6_toml_upstreams() {
   if ! sudo systemctl restart pihole-FTL; then
     log_error "Failed to restart pihole-FTL"
     exit 1
+  fi
+
+
+  # Wait until Pi-hole DNS can actually resolve (avoid 'Not Ready' race)
+  if command -v dig >/dev/null 2>&1; then
+    local ok=false
+    for _ in {1..30}; do
+      if dig +time=2 +tries=1 +short @127.0.0.1 example.com A | grep -qE '^[0-9.]+$'; then
+        ok=true
+        break
+      fi
+      sleep 2
+    done
+    if [[ "$ok" != true ]]; then
+      log_error "Pi-hole DNS did not become ready (example.com not resolving)"
+      exit 1
+    fi
   fi
 
   log_success "Pi-hole v6 DNS upstreams configured"
@@ -764,6 +799,8 @@ setup_pihole_host() {
         PIHOLE_SKIP_OS_CHECK=true \
         PIHOLE_INSTALL_AUTO=true \
         DEBIAN_FRONTEND=noninteractive \
+        PIHOLE_DNS_1=127.0.0.1#$UNBOUND_PORT \
+        PIHOLE_DNS_2=no \
         DNS1=127.0.0.1#$UNBOUND_PORT \
         DNS2=no \
         bash -s -- --unattended || {
@@ -845,8 +882,10 @@ setup_netalertx() {
     sudo docker rm -f netalertx 2>/dev/null || true
     
     # Create data directory (NetAlertX expects /data)
-    sudo mkdir -p /opt/netalertx/data
+    sudo mkdir -p /opt/netalertx/data/config /opt/netalertx/data/db
     sudo chmod 755 /opt/netalertx /opt/netalertx/data
+    # NetAlertX container expects /data to be writable (container typically runs as uid/gid 20211)
+    sudo chown -R 20211:20211 /opt/netalertx/data
 
     # Detect legacy mounts and warn about migration
     if [[ -d /opt/netalertx/config || -d /opt/netalertx/db ]]; then
@@ -865,6 +904,7 @@ setup_netalertx() {
     sudo docker run -d --name netalertx --network host \
       --cap-add=NET_ADMIN --cap-add=NET_RAW \
       -v /opt/netalertx/data:/data \
+      --tmpfs /tmp:uid=20211,gid=20211,mode=1700 \
       -e TZ=UTC --restart unless-stopped jokobsk/netalertx:latest || {
       log_error "NetAlertX container failed to start"; exit 1;
     }
@@ -1000,7 +1040,13 @@ run_healthchecks() {
       systemctl is-active --quiet pihole-FTL 2>/dev/null && break
       sleep 1
     done
-    systemctl is-active --quiet pihole-FTL 2>/dev/null || { log_error "Pi-hole service missing"; all_healthy=false; }
+    if ! systemctl is-active --quiet pihole-FTL 2>/dev/null; then
+      log_error "Pi-hole service missing"
+      all_healthy=false
+    elif ! dig +time=2 +tries=1 +short @127.0.0.1 example.com A | grep -qE '^[0-9.]+$'; then
+      log_error "Pi-hole DNS not resolving (check upstreams)"
+      all_healthy=false
+    fi
   fi
 
   # NetAlertX (only if installed)
