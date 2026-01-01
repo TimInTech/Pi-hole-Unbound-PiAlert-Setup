@@ -519,10 +519,25 @@ check_netalertx() {
       pass "NetAlertX container is running"
       found=true
 
-      # Try to get port mapping
-      port=$(sudo docker ps --filter name=netalertx --format "{{.Ports}}" 2>/dev/null | grep -oP '\d+(?=->20211)' | head -n1 || echo "")
-      if [[ -z "$port" ]]; then
-        port=$(docker ps --filter name=netalertx --format "{{.Ports}}" 2>/dev/null | grep -oP '\d+(?=->20211)' | head -n1 || echo "20211")
+      # Host networking is recommended for reliable device discovery.
+      local network_mode=""
+      network_mode=$(sudo docker inspect -f '{{.HostConfig.NetworkMode}}' netalertx 2>/dev/null || docker inspect -f '{{.HostConfig.NetworkMode}}' netalertx 2>/dev/null || echo "")
+
+      if [[ "$network_mode" == "host" ]]; then
+        pass "NetAlertX container network mode: host"
+        port="20211"
+      else
+        if [[ -n "$network_mode" ]]; then
+          warn "NetAlertX container not in host mode (NetworkMode: $network_mode). Device discovery may be limited."
+        else
+          warn "Could not determine NetAlertX container network mode"
+        fi
+
+        # Try to get port mapping (bridge mode)
+        port=$(sudo docker ps --filter name=netalertx --format "{{.Ports}}" 2>/dev/null | grep -oP '\d+(?=->20211)' | head -n1 || echo "")
+        if [[ -z "$port" ]]; then
+          port=$(docker ps --filter name=netalertx --format "{{.Ports}}" 2>/dev/null | grep -oP '\d+(?=->20211)' | head -n1 || echo "")
+        fi
       fi
     fi
   fi
@@ -582,20 +597,31 @@ get_service_urls() {
 
   # NetAlertX
   if command -v docker &>/dev/null; then
-    local netalertx_port
-    netalertx_port=$(sudo docker ps --filter name=netalertx --format "{{.Ports}}" 2>/dev/null | grep -oP '\d+(?=->20211)' | head -n1 || \
-                     docker ps --filter name=netalertx --format "{{.Ports}}" 2>/dev/null | grep -oP '\d+(?=->20211)' | head -n1 || echo "")
-    if [[ -n "$netalertx_port" ]]; then
-      printf "│ %-63s │\n" "NetAlertX:       http://${ipv4}:${netalertx_port}"
+    local netalertx_port=""
+    local network_mode=""
+
+    if sudo docker ps --filter name=netalertx --format "{{.Names}}" 2>/dev/null | grep -q '^netalertx$' ||        docker ps --filter name=netalertx --format "{{.Names}}" 2>/dev/null | grep -q '^netalertx$'; then
+
+      network_mode=$(sudo docker inspect -f '{{.HostConfig.NetworkMode}}' netalertx 2>/dev/null || docker inspect -f '{{.HostConfig.NetworkMode}}' netalertx 2>/dev/null || echo "")
+
+      if [[ "$network_mode" == "host" ]]; then
+        netalertx_port="20211"
+      else
+        netalertx_port=$(sudo docker ps --filter name=netalertx --format "{{.Ports}}" 2>/dev/null | grep -oP '\d+(?=->20211)' | head -n1 ||                          docker ps --filter name=netalertx --format "{{.Ports}}" 2>/dev/null | grep -oP '\d+(?=->20211)' | head -n1 || echo "")
+      fi
+
+      if [[ -n "$netalertx_port" ]]; then
+        printf "│ %-63s │\n" "NetAlertX:       http://${ipv4}:${netalertx_port}"
+      fi
     fi
   fi
 
-  echo "└─────────────────────────────────────────────────────────────────┘"
   # Python Suite (optional)
   if systemctl is-active --quiet pihole-suite 2>/dev/null; then
     printf "│ %-63s │\n" "Python Suite API: http://127.0.0.1:8090"
   fi
 
+  echo "└─────────────────────────────────────────────────────────────────┘"
   echo ""
 }
 

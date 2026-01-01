@@ -792,9 +792,16 @@ setup_netalertx() {
         log_warning "Detected legacy NetAlertX data dirs (/opt/netalertx/config,/opt/netalertx/db). New installs use /opt/netalertx/data mounted to /data; migrate your data if needed."
       fi
     fi
-    
-    log "Creating NetAlertX container..."
-    sudo docker run -d --name netalertx -p $NETALERTX_PORT:20211 \
+    # NetAlertX device discovery typically works best with host networking.
+    # Host mode implies the web UI listens on the host's port 20211.
+    if [[ "$NETALERTX_PORT" != "20211" ]]; then
+      log_warning "NetAlertX host networking uses port 20211; overriding NETALERTX_PORT=$NETALERTX_PORT -> 20211"
+      NETALERTX_PORT=20211
+    fi
+
+    log "Creating NetAlertX container (host networking)..."
+    sudo docker run -d --name netalertx --network host \
+      --cap-add=NET_ADMIN --cap-add=NET_RAW \
       -v /opt/netalertx/data:/data \
       -e TZ=UTC --restart unless-stopped jokobsk/netalertx:latest || {
       log_error "NetAlertX container failed to start"; exit 1;
@@ -803,7 +810,7 @@ setup_netalertx() {
     # Wait for NetAlertX to be ready
     local timeout=30
     local count=0
-    while ! curl -s http://127.0.0.1:$NETALERTX_PORT >/dev/null 2>&1 && [ $count -lt $timeout ]; do
+    while ! curl -s http://127.0.0.1:20211 >/dev/null 2>&1 && [ $count -lt $timeout ]; do
       sleep 2
       ((count++))
     done
@@ -815,7 +822,7 @@ setup_netalertx() {
     log_success "NetAlertX container is running"
     update_state NETALERTX_OK true
   else
-    log "DRY RUN: Would create NetAlertX container on port $NETALERTX_PORT"
+    log "DRY RUN: Would create NetAlertX container (host networking)"
     update_state NETALERTX_OK true
   fi
 }

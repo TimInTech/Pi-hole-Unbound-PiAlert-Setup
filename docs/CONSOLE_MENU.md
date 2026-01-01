@@ -4,6 +4,12 @@
 
 The console menu provides an interactive interface for managing your Pi-hole + Unbound + Pi.Alert installation. It offers convenient access to verification tools, maintenance tasks, and system monitoring.
 
+## Screenshots
+
+![Console menu: Pi-hole Suite Management](assets/Screenshot%202026-01-01%20161018.png)
+
+![View logs: Pi-hole + Unbound Management Suite](assets/Pi-hole%20Unbound%20Management%20Suite.png)
+
 ## Quick Start
 
 ### Running the Menu

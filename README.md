@@ -153,12 +153,14 @@ If you see **German output**, you're not running the repo version (it is English
 readlink -f ./scripts/post_install_check.sh
 ```
 
-**NetAlertX / Pi.Alert Next (Docker):** This repo runs NetAlertX as a Docker container named `netalertx`. It's normal to have **no systemd service** for it. If the script can't show a URL, verify port mapping:
+**NetAlertX / Pi.Alert Next (Docker):** This repo runs NetAlertX as a Docker container named `netalertx`. It's normal to have **no systemd service** for it. This setup uses **host networking** (recommended for device discovery), so Docker may not show a `0.0.0.0:PORT->...` mapping. Verify network mode:
 
 ```bash
-sudo docker ps --format '{{.Names}}  {{.Ports}}' | grep -i netalertx
-# expected: 0.0.0.0:20211->20211/tcp (or similar)
+sudo docker inspect -f '{{.HostConfig.NetworkMode}}' netalertx
+# expected: host
 ```
+
+Web UI: `http://[your-ip]:20211`
 
 **Python API (`pihole-suite`, optional):** A local FastAPI service bound to `127.0.0.1:8090` with API-key auth (`X-API-Key`). It exposes read-only endpoints like `/health`, `/dns`, `/leases`, `/stats`. Some endpoints may return empty data depending on logs/permissions.
 
@@ -350,7 +352,7 @@ Checks Unbound service + a quick `dig` against `127.0.0.1:${UNBOUND_PORT}`.
 
 #### `GET /netalertx`
 
-Checks whether NetAlertX responds on `http://127.0.0.1:${NETALERTX_PORT}`.
+Checks whether NetAlertX responds on `http://127.0.0.1:20211` (host mode).
 
 #### `GET /health`
 
@@ -504,6 +506,11 @@ pihole-suite
 ```
 
 The console menu provides:
+![Console menu: Pi-hole Suite Management](docs/assets/Screenshot%202026-01-01%20161018.png)
+
+![View logs: Pi-hole + Unbound Management Suite](docs/assets/Pi-hole%20Unbound%20Management%20Suite.png)
+
+
 - Quick and full system checks
 - Service URL display
 - Manual verification steps guide
