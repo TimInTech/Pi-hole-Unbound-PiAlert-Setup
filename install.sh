@@ -275,10 +275,14 @@ validate_state_against_system() {
 
   # Python Suite
   if [[ "${PY_SUITE_OK:-false}" == true && "$CONTAINER_MODE" == false && "${INSTALL_PYTHON_SUITE:-true}" == true ]]; then
-    if command -v systemctl >/dev/null 2>&1 && ! systemctl is-active --quiet pihole-suite 2>/dev/null; then
-      log_warning "State override: PY_SUITE_OK=true but pihole-suite service not active"
+    if command -v systemctl >/dev/null 2>&1; then
+      local py_state
+      py_state="$(systemctl is-active pihole-suite.service 2>/dev/null || true)"
+      if [[ "$py_state" != "active" ]]; then
+      log_warning "State override: PY_SUITE_OK=true but pihole-suite service not active (state: $py_state)"
       update_state PY_SUITE_OK false
       changed=true
+      fi
     fi
   fi
 
@@ -1002,7 +1006,19 @@ setup_netalertx() {
 # PYTHON SUITE SETUP
 # =============================================
 setup_python_suite() {
-  [[ "$PY_SUITE_OK" == true && "$FORCE" != true ]] && { log "✅ Python Suite OK"; return; }
+  if [[ "$PY_SUITE_OK" == true && "$FORCE" != true ]]; then
+    if [[ "$CONTAINER_MODE" == false ]] && command -v systemctl >/dev/null 2>&1; then
+      local py_state
+      py_state="$(systemctl is-active pihole-suite.service 2>/dev/null || true)"
+      if [[ "$py_state" == "active" ]]; then
+        log "✅ Python Suite OK"
+        return
+      fi
+    fi
+
+    # Stale state flag; force the step to run again.
+    update_state PY_SUITE_OK false
+  fi
 
   if ! $DRY_RUN; then
     local suite_user="pihole-suite"
@@ -1021,7 +1037,11 @@ setup_python_suite() {
     fi
     sudo mkdir -p "$suite_state_dir"
 
-    [[ ! -d "$SCRIPT_DIR/venv" ]] && python3 -m venv "$SCRIPT_DIR/venv"
+    if [[ ! -x "$SCRIPT_DIR/venv/bin/python" ]]; then
+      log_warning "Python venv missing/broken at $SCRIPT_DIR/venv; recreating"
+      sudo rm -rf "$SCRIPT_DIR/venv" 2>/dev/null || true
+      python3 -m venv "$SCRIPT_DIR/venv"
+    fi
     "$SCRIPT_DIR/venv/bin/pip" install -r "$SCRIPT_DIR/requirements.txt" || {
       log_error "Python requirements failed"; exit 1;
     }
