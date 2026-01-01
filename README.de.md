@@ -275,7 +275,6 @@ Hinweis: `lease_start` ist ggf. `null` (nicht in allen Lease-Dateien verfügbar)
 
 Der Installer generiert den API-Key in `.env` (`SUITE_API_KEY`). Du kannst ihn mit `sudo cat .env` ansehen.
 
-\1
 ### Smoke-Test
 
 ```bash

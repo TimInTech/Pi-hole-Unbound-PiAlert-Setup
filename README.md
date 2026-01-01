@@ -294,7 +294,6 @@ Optional hard proof (if tcpdump installed):
 
 The installer generates an API key in `.env` (`SUITE_API_KEY`). You can inspect it with `sudo cat .env`.
 
-\1
 ### Smoke Test
 
 ```bash
