@@ -144,6 +144,33 @@ init_runtime_paths() {
   fi
 }
 
+
+ensure_suite_env_file() {
+  # Generate/maintain the suite env file regardless of whether the Python suite is installed.
+  # This matches the README expectation and avoids confusion when users want to retrieve SUITE_API_KEY.
+  local suite_data_dir="${1:-$STATE_DIR/data}"
+
+  if [[ "$DRY_RUN" == true ]]; then
+    log "DRY RUN: Would ensure suite env at $ENV_FILE"
+    return
+  fi
+
+  sudo mkdir -p "$(dirname "$ENV_FILE")" 2>/dev/null || true
+  sudo mkdir -p "$suite_data_dir" 2>/dev/null || true
+
+  if [[ ! -f "$ENV_FILE" ]] || ! grep -q '^SUITE_API_KEY=' "$ENV_FILE" 2>/dev/null; then
+    echo "SUITE_API_KEY=$(openssl rand -hex 32)" > "$ENV_FILE"
+  fi
+
+  grep -q '^SUITE_PORT=' "$ENV_FILE" 2>/dev/null || echo "SUITE_PORT=$PYTHON_SUITE_PORT" >> "$ENV_FILE"
+  grep -q '^UNBOUND_PORT=' "$ENV_FILE" 2>/dev/null || echo "UNBOUND_PORT=$UNBOUND_PORT" >> "$ENV_FILE"
+  grep -q '^NETALERTX_PORT=' "$ENV_FILE" 2>/dev/null || echo "NETALERTX_PORT=$NETALERTX_PORT" >> "$ENV_FILE"
+  grep -q '^SUITE_DATA_DIR=' "$ENV_FILE" 2>/dev/null || echo "SUITE_DATA_DIR=$suite_data_dir" >> "$ENV_FILE"
+  grep -q '^SUITE_LOG_LEVEL=' "$ENV_FILE" 2>/dev/null || echo "SUITE_LOG_LEVEL=INFO" >> "$ENV_FILE"
+
+  sudo chmod 640 "$ENV_FILE" 2>/dev/null || true
+}
+
 # =============================================
 # STATE MANAGEMENT
 # =============================================
@@ -982,15 +1009,7 @@ setup_python_suite() {
     local suite_data_dir="$STATE_DIR/data"
     local suite_entrypoint="$SCRIPT_DIR/start_suite.py"
 
-    sudo mkdir -p "$suite_data_dir"
-    if [[ ! -f "$ENV_FILE" ]] || ! grep -q '^SUITE_API_KEY=' "$ENV_FILE"; then
-      echo "SUITE_API_KEY=$(openssl rand -hex 32)" > "$ENV_FILE"
-    fi
-    grep -q '^SUITE_PORT=' "$ENV_FILE" 2>/dev/null || echo "SUITE_PORT=$PYTHON_SUITE_PORT" >> "$ENV_FILE"
-    grep -q '^UNBOUND_PORT=' "$ENV_FILE" 2>/dev/null || echo "UNBOUND_PORT=$UNBOUND_PORT" >> "$ENV_FILE"
-    grep -q '^NETALERTX_PORT=' "$ENV_FILE" 2>/dev/null || echo "NETALERTX_PORT=$NETALERTX_PORT" >> "$ENV_FILE"
-    grep -q '^SUITE_DATA_DIR=' "$ENV_FILE" 2>/dev/null || echo "SUITE_DATA_DIR=$suite_data_dir" >> "$ENV_FILE"
-    grep -q '^SUITE_LOG_LEVEL=' "$ENV_FILE" 2>/dev/null || echo "SUITE_LOG_LEVEL=INFO" >> "$ENV_FILE"
+    ensure_suite_env_file "$suite_data_dir"
 
     if ! getent group "$suite_group" >/dev/null 2>&1; then
       sudo groupadd --system "$suite_group"
@@ -1120,6 +1139,7 @@ main() {
   handle_systemd_resolved
   check_ports
   install_packages
+  ensure_suite_env_file
   configure_unbound
   setup_pihole
   
