@@ -108,6 +108,8 @@ upstreams = ["127.0.0.1#5335"]
 
 This repo ships a **read-only** verification tool to quickly confirm that Pi-hole, Unbound (and optionally NetAlertX) are up and configured correctly.
 
+Note: The script output is **English-only** (messages are not localized).
+
 ### Common commands
 
 ```bash

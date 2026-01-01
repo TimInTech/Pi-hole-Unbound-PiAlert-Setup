@@ -107,6 +107,8 @@ upstreams = ["127.0.0.1#5335"]
 
 Dieses Repo enthält ein **read-only** Prüfskript, mit dem du nach der Installation schnell verifizieren kannst, dass Pi-hole, Unbound (und optional NetAlertX) laufen und korrekt konfiguriert sind.
 
+Hinweis: Die Skript-Ausgabe ist aktuell **nur auf Englisch** (keine automatische Übersetzung je nach System-Sprache).
+
 ### Häufige Kommandos
 
 ```bash
