@@ -67,11 +67,52 @@ log_warning() {
   fi
 }
 
+init_runtime_paths() {
+  # Enforce: clone as normal user, execute via sudo.
+  # (root shells like "su -" are intentionally rejected)
+  if [[ ${EUID:-$(id -u)} -eq 0 && -z "${SUDO_USER:-}" ]]; then
+    echo "Do not run this installer as root directly." >&2
+    echo "Clone the repo as a normal user and run it via: sudo ./install.sh" >&2
+    exit 1
+  fi
+
+  # Ensure log dir exists; fall back to repo dir if it cannot be used.
+  if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
+    mkdir -p "$LOG_DIR" 2>/dev/null || true
+    chmod 0755 "$LOG_DIR" 2>/dev/null || true
+  fi
+
+  if [[ ! -d "$LOG_DIR" || ! -w "$LOG_DIR" ]]; then
+    LOG_FILE="${SCRIPT_DIR}/install.log"
+    ERROR_LOG="${SCRIPT_DIR}/install_errors.log"
+  fi
+
+  # Ensure state dir exists; fall back to repo dir if it cannot be used.
+  if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
+    mkdir -p "$STATE_DIR" 2>/dev/null || true
+    chmod 0755 "$STATE_DIR" 2>/dev/null || true
+  fi
+
+  if [[ ! -d "$(dirname "$STATE_FILE")" || ! -w "$(dirname "$STATE_FILE")" ]]; then
+    STATE_FILE="${SCRIPT_DIR}/data/install.state"
+  fi
+
+  # Ensure env dir exists; fall back to repo dir if it cannot be used.
+  if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
+    mkdir -p "$ENV_DIR" 2>/dev/null || true
+    chmod 0755 "$ENV_DIR" 2>/dev/null || true
+  fi
+
+  if [[ ! -d "$(dirname "$ENV_FILE")" || ! -w "$(dirname "$ENV_FILE")" ]]; then
+    ENV_FILE="${SCRIPT_DIR}/.env"
+  fi
+}
+
 # =============================================
 # STATE MANAGEMENT
 # =============================================
 init_state() {
-  mkdir -p "${SCRIPT_DIR}/data"
+  mkdir -p "$(dirname "$STATE_FILE")"
   if [[ ! -f "$STATE_FILE" ]]; then
     cat > "$STATE_FILE" <<EOF
 PACKAGES_OK=false
@@ -196,19 +237,41 @@ parse_args() {
 # SYSTEM CHECKS
 # =============================================
 check_dependencies() {
-  local missing=()
-  for cmd in curl openssl; do
-    command -v "$cmd" >/dev/null || missing+=("$cmd")
-  done
-  
-  # Only check for sudo if not running in dry-run mode
-  if [[ "$DRY_RUN" != true ]]; then
-    command -v sudo >/dev/null || missing+=("sudo")
-  fi
-  
-  if [[ ${#missing[@]} -gt 0 ]]; then 
-    log_error "Missing: ${missing[*]}"
+  # OS / package manager sanity
+  if [[ ! -r /etc/os-release ]]; then
+    log_error "Cannot read /etc/os-release (unsupported system)"
     exit 1
+  fi
+
+  if ! grep -Eq "^(ID|ID_LIKE)=(debian|ubuntu|.*debian.*|.*ubuntu.*)$" /etc/os-release; then
+    log_error "Unsupported OS (expected Debian/Ubuntu family)"
+    exit 1
+  fi
+
+  command -v apt-get >/dev/null 2>&1 || { log_error "apt-get not found"; exit 1; }
+
+  # Enforce sudo invocation to keep stable paths writable.
+  if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
+    log_error "Run this installer via sudo: sudo ./install.sh"
+    exit 1
+  fi
+
+  # Note: most dependencies are installed by install_packages(); warn early for clarity
+  local missing_bootstrap=()
+  for cmd in curl openssl python3; do
+    command -v "$cmd" >/dev/null 2>&1 || missing_bootstrap+=("$cmd")
+  done
+  if [[ ${#missing_bootstrap[@]} -gt 0 ]]; then
+    log_warning "Bootstrap tools missing (installer will install): ${missing_bootstrap[*]}"
+  fi
+
+  # Optional tools (installer will install them, but preflight helps when debugging)
+  local missing_optional=()
+  for cmd in git jq dig ss ip; do
+    command -v "$cmd" >/dev/null 2>&1 || missing_optional+=("$cmd")
+  done
+  if [[ ${#missing_optional[@]} -gt 0 ]]; then
+    log_warning "Optional tools missing (installer will install): ${missing_optional[*]}"
   fi
 }
 
@@ -772,8 +835,8 @@ setup_python_suite() {
     "$SCRIPT_DIR/venv/bin/pip" install -r "$SCRIPT_DIR/requirements.txt" || {
       log_error "Python requirements failed"; exit 1;
     }
-    sudo chown -R "$suite_user":"$suite_group" "$SCRIPT_DIR/data" "$SCRIPT_DIR/venv" "$suite_state_dir" 2>/dev/null || true
-    sudo chown "$suite_user":"$suite_group" "$ENV_FILE"
+    sudo chown -R "$suite_user":"$suite_group" "$suite_data_dir" "$SCRIPT_DIR/venv" "$suite_state_dir" 2>/dev/null || true
+    sudo chown root:"$suite_group" "$ENV_FILE"
     sudo chmod 640 "$ENV_FILE"
     [[ -f "$suite_entrypoint" ]] || log_warning "Python Suite entrypoint missing at $suite_entrypoint (service may need code before start)"
 
@@ -875,6 +938,7 @@ run_healthchecks() {
 # =============================================
 main() {
   parse_args "$@"
+  init_runtime_paths
   init_state
   validate_state_against_system
   check_dependencies

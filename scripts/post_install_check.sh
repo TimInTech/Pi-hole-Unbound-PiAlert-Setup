@@ -364,6 +364,16 @@ check_pihole() {
     local version
     version=$(pihole -v 2>/dev/null | grep "Pi-hole version is" | awk '{print $NF}' || echo "unknown")
     info "Pi-hole version: $version"
+    if [[ "$version" =~ v([0-9]+)\. ]]; then
+      local major="${BASH_REMATCH[1]}"
+      if (( major < 6 )); then
+        fail "Pi-hole v6 required (detected $version)"
+      else
+        pass "Pi-hole major version OK (v${major})"
+      fi
+    else
+      warn "Could not parse Pi-hole version (expected v6.x.y): $version"
+    fi
   fi
 
   # Service status
@@ -393,7 +403,7 @@ check_pihole() {
 
   # DNS resolution test
   if command -v dig &>/dev/null; then
-    if dig +short @127.0.0.1 example.org +time=5 2>/dev/null | grep -qE '^[0-9.]+$'; then
+    if dig +short @127.0.0.1 example.org +time=1 +tries=1 2>/dev/null | grep -qE '^[0-9.]+$'; then
       pass "Pi-hole resolves example.org"
     else
       fail "Pi-hole cannot resolve example.org"
