@@ -322,6 +322,45 @@ handle_systemd_resolved() {
     fi
   fi
 }
+configure_local_dns_resolver() {
+  # Keep system DNS stable during installation (e.g. for Docker pulls).
+  # Only switch /etc/resolv.conf to 127.0.0.1 once Pi-hole is confirmed working.
+  [[ "$CONTAINER_MODE" == true ]] && return 0
+
+  if [[ "$DRY_RUN" == true ]]; then
+    log "DRY RUN: Would set $RESOLV_CONF to nameserver 127.0.0.1"
+    return 0
+  fi
+
+  # Backup current resolver once
+  if [[ -f "$RESOLV_CONF" && ! -f "$RESOLV_CONF_BACKUP" ]]; then
+    sudo cp -f "$RESOLV_CONF" "$RESOLV_CONF_BACKUP" 2>/dev/null || true
+  fi
+
+  echo "nameserver 127.0.0.1" | sudo tee "$RESOLV_CONF" >/dev/null
+
+  # Verify Pi-hole can resolve; if not, restore previous resolver to avoid breaking the host.
+  if command -v dig >/dev/null 2>&1; then
+    if ! dig +time=2 +tries=1 @127.0.0.1 example.com >/dev/null 2>&1; then
+      log_warning "Local DNS (127.0.0.1) not resolving yet; restoring previous $RESOLV_CONF"
+      [[ -f "$RESOLV_CONF_BACKUP" ]] && sudo cp -f "$RESOLV_CONF_BACKUP" "$RESOLV_CONF" 2>/dev/null || true
+      return 0
+    fi
+  else
+    if ! python3 - <<'PYCHECK' >/dev/null 2>&1
+import socket
+socket.getaddrinfo('example.com', 80)
+PYCHECK
+    then
+      log_warning "System resolver not working after switch to 127.0.0.1; restoring previous $RESOLV_CONF"
+      [[ -f "$RESOLV_CONF_BACKUP" ]] && sudo cp -f "$RESOLV_CONF_BACKUP" "$RESOLV_CONF" 2>/dev/null || true
+      return 0
+    fi
+  fi
+
+  log_success "System resolver configured: nameserver 127.0.0.1"
+}
+
 
 
 check_ports() {
@@ -750,7 +789,6 @@ setup_pihole_host() {
       echo "# Managed via Pi-hole UI (placeholder created by installer)" | sudo tee "$PIHOLE_TOML" >/dev/null
     fi
     configure_pihole_v6_toml_upstreams
-    echo "nameserver 127.0.0.1" | sudo tee "$RESOLV_CONF" >/dev/null
     log_success "Pi-hole OK"
     update_state PIHOLE_OK true
   else
@@ -1015,6 +1053,8 @@ main() {
     update_state PY_SUITE_OK true
   fi
   
+  configure_local_dns_resolver
+
   run_healthchecks
 
   log_success "🎉 Installation complete!"
