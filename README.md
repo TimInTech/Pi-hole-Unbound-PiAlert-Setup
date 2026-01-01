@@ -238,6 +238,20 @@ curl -H "X-API-Key: your-api-key" http://127.0.0.1:8090/endpoint
 }
 ```
 
+#### `GET /leases`
+
+```json
+[
+  {
+    "ip": "192.168.1.101",
+    "mac": "aa:bb:cc:dd:ee:ff",
+    "hostname": "printer",
+    "lease_start": "2024-12-21 10:00:00",
+    "lease_end": "2024-12-21 12:00:00"
+  }
+]
+```
+
 #### `GET /dns?limit=50`
 
 ```json
@@ -298,67 +312,7 @@ curl -H "X-API-Key: your-api-key" http://127.0.0.1:8090/endpoint
 
 ### Post-Install Check Script
 
-Run the automated post-install verification script to check your setup:
-
-```bash
-# Quick check
-./scripts/post_install_check.sh --quick
-
-# Full check
-sudo ./scripts/post_install_check.sh --full
-
-# Show URLs only
-./scripts/post_install_check.sh --urls
-
-# View manual steps
-./scripts/post_install_check.sh --steps | less
-
-# Interactive menu (TTY)
-./scripts/post_install_check.sh
-```
-
-
-**Available options (`--help`):**
-
-```text
-Usage: post_install_check.sh [OPTIONS]
-
-Post-installation verification script for Pi-hole + Unbound + Pi.Alert setup.
-Performs read-only checks to verify service health and configuration.
-
-OPTIONS:
-  --quick       Run quick check (summary only)
-  --full        Run full check (all sections)
-  --urls        Show service URLs only
-  --steps       Show manual step-by-step verification guide
-  -h, --help    Show this help message
-```
-
-**Interactive menu (no args, TTY):**
-
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│         Pi-hole + Unbound Post-Install Check v1.0.0           │
-├─────────────────────────────────────────────────────────────────┤
-│ [1] Quick Check (summary only)                                  │
-│ [2] Full Check (all sections)                                   │
-│ [3] Show Service URLs                                           │
-│ [4] Service Status                                              │
-│ [5] Network Info                                                │
-│ [6] Exit                                                        │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**Manual steps excerpt (`--steps`):**
-
-```text
-STEP 1: Verify Unbound DNS Service
-...
-STEP 2: Verify Pi-hole Service
-...
-STEP 3: Verify Pi-hole v6 Configuration (CRITICAL)
-  upstreams = ["127.0.0.1#<UNBOUND_PORT>"]
-```
+For automated checks, use `./scripts/post_install_check.sh` (see **Post-Install Verification (post_install_check.sh)** earlier in this README for commands and options).
 
 **What it checks:**
 

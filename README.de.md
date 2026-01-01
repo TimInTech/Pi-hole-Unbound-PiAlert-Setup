@@ -125,48 +125,15 @@ sudo ./scripts/post_install_check.sh --full
 
 ### Optionen & interaktives Menü
 
-Ausgabe von `--help`:
+Optionen (Kurzüberblick):
 
-```text
-Usage: post_install_check.sh [OPTIONS]
+- `--quick` Schnellprüfung (nur Zusammenfassung)
+- `--full` Vollprüfung (alle Abschnitte; `sudo` empfohlen)
+- `--urls` Nur URLs anzeigen
+- `--steps` Manuelle Schritt-für-Schritt-Anleitung anzeigen
+- `-h, --help` Hilfe anzeigen
 
-Post-installation verification script for Pi-hole + Unbound + Pi.Alert setup.
-Performs read-only checks to verify service health and configuration.
-
-OPTIONS:
-  --quick       Run quick check (summary only)
-  --full        Run full check (all sections)
-  --urls        Show service URLs only
-  --steps       Show manual step-by-step verification guide
-  -h, --help    Show this help message
-
-INTERACTIVE MODE:
-  Run without arguments to enter interactive menu mode.
-
-EXAMPLES:
-  post_install_check.sh --quick           # Quick status check
-  post_install_check.sh --full            # Comprehensive check
-  post_install_check.sh --urls            # Display service URLs
-  post_install_check.sh --steps | less    # View manual verification steps
-  post_install_check.sh                   # Interactive menu
-
-NOTES:
-  - This script performs read-only checks only
-  - Some checks may require sudo privileges
-  - Running with sudo is recommended for complete checks
-  - Pi-hole v6 uses /etc/pihole/pihole.toml as authoritative config
-```
-
-Interaktiver Modus:
-
-```text
-[1] Quick Check (summary only)
-[2] Full Check (all sections)
-[3] Show Service URLs
-[4] Service Status
-[5] Network Info
-[6] Exit
-```
+Interaktiv: Ohne Argumente starten (`./scripts/post_install_check.sh`).
 
 
 > Schlanke Installation? Nutze `--skip-netalertx`, `--skip-python-api` oder `--minimal`, um nur die Kernkomponenten zu installieren.
@@ -311,64 +278,7 @@ curl -H "X-API-Key: $SUITE_API_KEY" http://127.0.0.1:8090/endpoint
 
 ### Post-Install-Prüfskript
 
-Führen Sie das automatisierte Verifizierungsskript aus, um Ihre Installation zu überprüfen:
-
-```bash
-# Interaktives Menü (empfohlen)
-sudo ./scripts/post_install_check.sh
-
-# Schnellprüfung (nur Zusammenfassung)
-sudo ./scripts/post_install_check.sh --quick
-
-# Vollständige Prüfung
-sudo ./scripts/post_install_check.sh --full
-
-# Service-URLs anzeigen
-./scripts/post_install_check.sh --urls
-```
-
-
-**Verfügbare Optionen (`--help`):**
-
-```text
-Usage: post_install_check.sh [OPTIONS]
-
-Post-installation verification script for Pi-hole + Unbound + Pi.Alert setup.
-Performs read-only checks to verify service health and configuration.
-
-OPTIONS:
-  --quick       Run quick check (summary only)
-  --full        Run full check (all sections)
-  --urls        Show service URLs only
-  --steps       Show manual step-by-step verification guide
-  -h, --help    Show this help message
-```
-
-**Interaktives Menü (ohne Argumente, TTY):**
-
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│         Pi-hole + Unbound Post-Install Check v1.0.0           │
-├─────────────────────────────────────────────────────────────────┤
-│ [1] Quick Check (summary only)                                  │
-│ [2] Full Check (all sections)                                   │
-│ [3] Show Service URLs                                           │
-│ [4] Service Status                                              │
-│ [5] Network Info                                                │
-│ [6] Exit                                                        │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**Auszug der manuellen Schritte (`--steps`):**
-
-```text
-STEP 1: Verify Unbound DNS Service
-...
-STEP 2: Verify Pi-hole Service
-...
-STEP 3: Verify Pi-hole v6 Configuration (CRITICAL)
-  upstreams = ["127.0.0.1#<UNBOUND_PORT>"]
-```
+Für automatisierte Checks verwende `./scripts/post_install_check.sh` (siehe Abschnitt **Post-Install Prüfung (post_install_check.sh)** weiter oben).
 
 **Was wird geprüft:**
 
@@ -379,7 +289,7 @@ STEP 3: Verify Pi-hole v6 Configuration (CRITICAL)
 ✅ Docker-Container (NetAlertX, Pi.Alert)
 ✅ Netzwerkkonfiguration und DNS-Einstellungen
 
-**Beispielausgabe:**
+**Beispielausgabe (gekürzt; Ausgabe ist Englisch wie im Skript):**
 
 ```
 === Pi-hole v6 Configuration ===
