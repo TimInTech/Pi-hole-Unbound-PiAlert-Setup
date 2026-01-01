@@ -275,10 +275,19 @@ Hinweis: `lease_start` ist ggf. `null` (nicht in allen Lease-Dateien verfügbar)
 
 Der Installer generiert den API-Key in `.env` (`SUITE_API_KEY`). Du kannst ihn mit `sudo cat .env` ansehen.
 
-Alle Endpunkte benötigen den `X-API-Key`-Header:
+\1
+### Smoke-Test
 
 ```bash
-curl -H "X-API-Key: $SUITE_API_KEY" http://127.0.0.1:8090/endpoint
+# API-Key aus .env laden (wird vom Installer erzeugt)
+SUITE_API_KEY="$(sudo awk -F= '/^SUITE_API_KEY=/{print $2}' .env)"
+
+# Sicherstellen, dass der Dienst läuft
+sudo systemctl restart pihole-suite
+sudo systemctl --no-pager --full status pihole-suite
+
+# Health-Endpunkt prüfen
+curl -s -H "X-API-Key: $SUITE_API_KEY" http://127.0.0.1:8090/health
 ```
 
 ### Endpunkte

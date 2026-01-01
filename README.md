@@ -294,10 +294,19 @@ Optional hard proof (if tcpdump installed):
 
 The installer generates an API key in `.env` (`SUITE_API_KEY`). You can inspect it with `sudo cat .env`.
 
-All endpoints require the `X-API-Key` header:
+\1
+### Smoke Test
 
 ```bash
-curl -H "X-API-Key: your-api-key" http://127.0.0.1:8090/endpoint
+# Load API key from .env (created by the installer)
+SUITE_API_KEY="$(sudo awk -F= '/^SUITE_API_KEY=/{print $2}' .env)"
+
+# Ensure the service is running
+sudo systemctl restart pihole-suite
+sudo systemctl --no-pager --full status pihole-suite
+
+# Call health endpoint
+curl -s -H "X-API-Key: $SUITE_API_KEY" http://127.0.0.1:8090/health
 ```
 
 ### Endpoints
