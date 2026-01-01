@@ -67,6 +67,9 @@ Client → Pi-hole → Unbound → Internet
 127.0.0.1#5335
 ```
 
+![Pi-hole installer dialog: Specify Upstream DNS Provider(s)](docs/assets/pihole-upstream-dns.png)
+
+
 ### How this repo behaves
 
 - When you run `sudo ./install.sh` (default), the installer configures Pi-hole v6 upstreams automatically in `/etc/pihole/pihole.toml`.
@@ -100,6 +103,72 @@ upstreams = ["127.0.0.1#5335"]
 ```
 
 **Done!** 🎉 Your complete DNS security stack is now running.
+
+## ✅ Post-Install Verification (post_install_check.sh)
+
+This repo ships a **read-only** verification tool to quickly confirm that Pi-hole, Unbound (and optionally NetAlertX) are up and configured correctly.
+
+### Common commands
+
+```bash
+# Quick check
+./scripts/post_install_check.sh --quick
+
+# Full check (recommended with sudo)
+sudo ./scripts/post_install_check.sh --full
+
+# Show URLs only
+./scripts/post_install_check.sh --urls
+
+# View manual steps
+./scripts/post_install_check.sh --steps | less
+```
+
+### Options & interactive menu
+
+`--help` output:
+
+```text
+Usage: post_install_check.sh [OPTIONS]
+
+Post-installation verification script for Pi-hole + Unbound + Pi.Alert setup.
+Performs read-only checks to verify service health and configuration.
+
+OPTIONS:
+  --quick       Run quick check (summary only)
+  --full        Run full check (all sections)
+  --urls        Show service URLs only
+  --steps       Show manual step-by-step verification guide
+  -h, --help    Show this help message
+
+INTERACTIVE MODE:
+  Run without arguments to enter interactive menu mode.
+
+EXAMPLES:
+  post_install_check.sh --quick           # Quick status check
+  post_install_check.sh --full            # Comprehensive check
+  post_install_check.sh --urls            # Display service URLs
+  post_install_check.sh --steps | less    # View manual verification steps
+  post_install_check.sh                   # Interactive menu
+
+NOTES:
+  - This script performs read-only checks only
+  - Some checks may require sudo privileges
+  - Running with sudo is recommended for complete checks
+  - Pi-hole v6 uses /etc/pihole/pihole.toml as authoritative config
+```
+
+Interactive mode:
+
+```text
+[1] Quick Check (summary only)
+[2] Full Check (all sections)
+[3] Show Service URLs
+[4] Service Status
+[5] Network Info
+[6] Exit
+```
+
 
 > Prefer a slim install? Use `--skip-netalertx`, `--skip-python-api`, or `--minimal` to omit optional components.
 
@@ -232,17 +301,63 @@ curl -H "X-API-Key: your-api-key" http://127.0.0.1:8090/endpoint
 Run the automated post-install verification script to check your setup:
 
 ```bash
-# Interactive menu (recommended)
-sudo ./scripts/post_install_check.sh
+# Quick check
+./scripts/post_install_check.sh --quick
 
-# Quick check (summary only)
-sudo ./scripts/post_install_check.sh --quick
-
-# Full comprehensive check
+# Full check
 sudo ./scripts/post_install_check.sh --full
 
-# Show service URLs
+# Show URLs only
 ./scripts/post_install_check.sh --urls
+
+# View manual steps
+./scripts/post_install_check.sh --steps | less
+
+# Interactive menu (TTY)
+./scripts/post_install_check.sh
+```
+
+
+**Available options (`--help`):**
+
+```text
+Usage: post_install_check.sh [OPTIONS]
+
+Post-installation verification script for Pi-hole + Unbound + Pi.Alert setup.
+Performs read-only checks to verify service health and configuration.
+
+OPTIONS:
+  --quick       Run quick check (summary only)
+  --full        Run full check (all sections)
+  --urls        Show service URLs only
+  --steps       Show manual step-by-step verification guide
+  -h, --help    Show this help message
+```
+
+**Interactive menu (no args, TTY):**
+
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│         Pi-hole + Unbound Post-Install Check v1.0.0           │
+├─────────────────────────────────────────────────────────────────┤
+│ [1] Quick Check (summary only)                                  │
+│ [2] Full Check (all sections)                                   │
+│ [3] Show Service URLs                                           │
+│ [4] Service Status                                              │
+│ [5] Network Info                                                │
+│ [6] Exit                                                        │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Manual steps excerpt (`--steps`):**
+
+```text
+STEP 1: Verify Unbound DNS Service
+...
+STEP 2: Verify Pi-hole Service
+...
+STEP 3: Verify Pi-hole v6 Configuration (CRITICAL)
+  upstreams = ["127.0.0.1#<UNBOUND_PORT>"]
 ```
 
 **What it checks:**

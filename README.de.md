@@ -66,6 +66,9 @@ Client → Pi-hole → Unbound → Internet
 127.0.0.1#5335
 ```
 
+![Pi-hole Installer-Dialog: Specify Upstream DNS Provider(s)](docs/assets/pihole-upstream-dns.png)
+
+
 ### Verhalten dieses Repos
 
 - Wenn du `sudo ./install.sh` ausführst (Standard), setzt der Installer die Pi-hole-v6-Upstreams automatisch in `/etc/pihole/pihole.toml`.
@@ -99,6 +102,72 @@ upstreams = ["127.0.0.1#5335"]
 ```
 
 **Fertig!** 🎉 Ihr kompletter DNS-Sicherheits-Stack läuft jetzt.
+
+## ✅ Post-Install Prüfung (post_install_check.sh)
+
+Dieses Repo enthält ein **read-only** Prüfskript, mit dem du nach der Installation schnell verifizieren kannst, dass Pi-hole, Unbound (und optional NetAlertX) laufen und korrekt konfiguriert sind.
+
+### Häufige Kommandos
+
+```bash
+# Quick check
+./scripts/post_install_check.sh --quick
+
+# Full check (mit sudo empfohlen)
+sudo ./scripts/post_install_check.sh --full
+
+# Nur URLs anzeigen
+./scripts/post_install_check.sh --urls
+
+# Manuelle Schritt-für-Schritt-Anleitung
+./scripts/post_install_check.sh --steps | less
+```
+
+### Optionen & interaktives Menü
+
+Ausgabe von `--help`:
+
+```text
+Usage: post_install_check.sh [OPTIONS]
+
+Post-installation verification script for Pi-hole + Unbound + Pi.Alert setup.
+Performs read-only checks to verify service health and configuration.
+
+OPTIONS:
+  --quick       Run quick check (summary only)
+  --full        Run full check (all sections)
+  --urls        Show service URLs only
+  --steps       Show manual step-by-step verification guide
+  -h, --help    Show this help message
+
+INTERACTIVE MODE:
+  Run without arguments to enter interactive menu mode.
+
+EXAMPLES:
+  post_install_check.sh --quick           # Quick status check
+  post_install_check.sh --full            # Comprehensive check
+  post_install_check.sh --urls            # Display service URLs
+  post_install_check.sh --steps | less    # View manual verification steps
+  post_install_check.sh                   # Interactive menu
+
+NOTES:
+  - This script performs read-only checks only
+  - Some checks may require sudo privileges
+  - Running with sudo is recommended for complete checks
+  - Pi-hole v6 uses /etc/pihole/pihole.toml as authoritative config
+```
+
+Interaktiver Modus:
+
+```text
+[1] Quick Check (summary only)
+[2] Full Check (all sections)
+[3] Show Service URLs
+[4] Service Status
+[5] Network Info
+[6] Exit
+```
+
 
 > Schlanke Installation? Nutze `--skip-netalertx`, `--skip-python-api` oder `--minimal`, um nur die Kernkomponenten zu installieren.
 
@@ -256,6 +325,49 @@ sudo ./scripts/post_install_check.sh --full
 
 # Service-URLs anzeigen
 ./scripts/post_install_check.sh --urls
+```
+
+
+**Verfügbare Optionen (`--help`):**
+
+```text
+Usage: post_install_check.sh [OPTIONS]
+
+Post-installation verification script for Pi-hole + Unbound + Pi.Alert setup.
+Performs read-only checks to verify service health and configuration.
+
+OPTIONS:
+  --quick       Run quick check (summary only)
+  --full        Run full check (all sections)
+  --urls        Show service URLs only
+  --steps       Show manual step-by-step verification guide
+  -h, --help    Show this help message
+```
+
+**Interaktives Menü (ohne Argumente, TTY):**
+
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│         Pi-hole + Unbound Post-Install Check v1.0.0           │
+├─────────────────────────────────────────────────────────────────┤
+│ [1] Quick Check (summary only)                                  │
+│ [2] Full Check (all sections)                                   │
+│ [3] Show Service URLs                                           │
+│ [4] Service Status                                              │
+│ [5] Network Info                                                │
+│ [6] Exit                                                        │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Auszug der manuellen Schritte (`--steps`):**
+
+```text
+STEP 1: Verify Unbound DNS Service
+...
+STEP 2: Verify Pi-hole Service
+...
+STEP 3: Verify Pi-hole v6 Configuration (CRITICAL)
+  upstreams = ["127.0.0.1#<UNBOUND_PORT>"]
 ```
 
 **Was wird geprüft:**

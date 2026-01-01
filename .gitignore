@@ -12,3 +12,5 @@ data/
 install-debug.log
 pihole-deployment-evidence/
 
+# Windows download metadata
+*:Zone.Identifier
