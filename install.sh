@@ -1070,6 +1070,19 @@ EOF
       sudo mv /tmp/pihole-suite.service /etc/systemd/system/
       sudo systemctl daemon-reload
       sudo systemctl enable --now pihole-suite.service
+
+      local i
+      for i in {1..10}; do
+        systemctl is-active --quiet pihole-suite.service 2>/dev/null && break
+        sleep 1
+      done
+      if ! systemctl is-active --quiet pihole-suite.service 2>/dev/null; then
+        log_error "Python Suite service failed to start"
+        sudo systemctl --no-pager --full status pihole-suite.service 2>/dev/null || true
+        sudo journalctl -u pihole-suite.service -n 120 --no-pager 2>/dev/null || true
+        update_state PY_SUITE_OK false
+        exit 1
+      fi
     fi
     log_success "Python Suite OK"
     update_state PY_SUITE_OK true
