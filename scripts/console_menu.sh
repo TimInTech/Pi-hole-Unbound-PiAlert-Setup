@@ -7,19 +7,13 @@ set -euo pipefail
 # =============================================
 
 VERSION="1.0.0"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
-
-# Colors
-if [[ -t 1 ]]; then
-  RED='\033[0;31m'
-  GREEN='\033[0;32m'
-  YELLOW='\033[1;33m'
-  BLUE='\033[0;34m'
-  BOLD='\033[1m'
-  NC='\033[0m'
-else
-  RED='' GREEN='' YELLOW='' BLUE='' BOLD='' NC=''
+UI_LIB="${SCRIPT_DIR}/lib/ui.sh"
+if [[ -f "$UI_LIB" ]]; then
+  # shellcheck source=/dev/null
+  source "$UI_LIB"
+  ui_init
 fi
 
 # =============================================
@@ -27,25 +21,24 @@ fi
 # =============================================
 header() {
   clear
-  echo -e "${BLUE}┌─────────────────────────────────────────────────────────────────┐${NC}"
-  echo -e "${BLUE}│${NC}          ${BOLD}Pi-hole + Unbound Management Suite v${VERSION}${NC}          ${BLUE}│${NC}"
-  echo -e "${BLUE}└─────────────────────────────────────────────────────────────────┘${NC}"
-  echo ""
+  printf '%s┌─────────────────────────────────────────────────────────────────┐%s\n' "$UI_BLUE" "$UI_RESET"
+  printf '%s│%s          %sPi-hole + Unbound Management Suite v%s%s          %s│%s\n' \
+    "$UI_BLUE" "$UI_RESET" "$UI_BOLD" "$VERSION" "$UI_RESET" "$UI_BLUE" "$UI_RESET"
+  printf '%s└─────────────────────────────────────────────────────────────────┘%s\n' "$UI_BLUE" "$UI_RESET"
+  printf '\n'
 }
 
 confirm() {
   local prompt="$1"
-  echo -e "${YELLOW}${prompt}${NC}"
-  read -rp "Continue? [y/N]: " choice
-  case "$choice" in
-    y|Y|yes|YES) return 0 ;;
-    *) echo -e "${RED}Cancelled.${NC}"; return 1 ;;
-  esac
+  if ui_confirm "$prompt"; then
+    return 0
+  fi
+  printf '%sCancelled.%s\n' "$UI_RED" "$UI_RESET"
+  return 1
 }
 
 pause() {
-  echo ""
-  read -rp "Press ENTER to continue..."
+  ui_pause
 }
 
 # =============================================
@@ -53,8 +46,7 @@ pause() {
 # =============================================
 action_quick_check() {
   header
-  echo -e "${GREEN}Running Quick Check...${NC}"
-  echo ""
+  printf '%sRunning Quick Check...%s\n\n' "$UI_GREEN" "$UI_RESET"
   "$SCRIPT_DIR/post_install_check.sh" --quick
   pause
 }
@@ -89,22 +81,20 @@ action_maintenance_pro() {
   local maint_script="$REPO_ROOT/tools/pihole_maintenance_pro.sh"
 
   if [[ ! -f "$maint_script" ]]; then
-    echo -e "${RED}Error: Maintenance Pro script not found at:${NC}"
-    echo "  $maint_script"
+    printf '%sError: Maintenance Pro script not found at:%s\n' "$UI_RED" "$UI_RESET"
+    printf '  %s\n' "$maint_script"
     pause
     return 1
   fi
 
-  echo -e "${YELLOW}⚠️  WARNING: Maintenance Pro performs system modifications${NC}"
-  echo ""
-  echo "This tool will:"
-  echo "  - Update package lists"
-  echo "  - Upgrade Pi-hole components"
-  echo "  - Clean temporary files"
-  echo "  - Restart services"
-  echo ""
-  echo -e "${BOLD}This requires sudo privileges.${NC}"
-  echo ""
+  printf '%s⚠️  WARNING: Maintenance Pro performs system modifications%s\n\n' "$UI_YELLOW" "$UI_RESET"
+  printf '%s\n' "This tool will:"
+  printf '%s\n' "  - Update package lists"
+  printf '%s\n' "  - Upgrade Pi-hole components"
+  printf '%s\n' "  - Clean temporary files"
+  printf '%s\n' "  - Restart services"
+  printf '\n'
+  printf '%sThis requires sudo privileges.%s\n\n' "$UI_BOLD" "$UI_RESET"
 
   if confirm "Run Maintenance Pro in SAFE mode?"; then
     echo ""
@@ -115,45 +105,79 @@ action_maintenance_pro() {
 
 action_view_logs() {
   header
-  echo -e "${BLUE}Available Logs:${NC}"
-  echo ""
+  printf '%sAvailable Logs:%s\n\n' "$UI_BLUE" "$UI_RESET"
 
   local logs_found=false
+  local log_files=()
+  local log=""
+  local latest_log=""
+  local nullglob_was_set=1
+
+  shopt -q nullglob || nullglob_was_set=0
+  shopt -s nullglob
 
   # Check for maintenance logs
-  if ls /var/log/pihole_maintenance_pro_*.log &>/dev/null 2>&1; then
+  log_files=(/var/log/pihole_maintenance_pro_*.log)
+  if (( ${#log_files[@]} > 0 )); then
     logs_found=true
-    echo "Maintenance Pro logs:"
-    ls -lh /var/log/pihole_maintenance_pro_*.log 2>/dev/null | tail -n 5
-    echo ""
+    printf '%s\n' "Maintenance Pro logs:"
+    for log in "${log_files[@]:0:5}"; do
+      if [[ -f "$log" ]]; then
+        ls -lh "$log" 2>/dev/null || printf '  %s\n' "$log"
+      fi
+    done
+    printf '\n'
   fi
 
   # Check for repo logs
-  if [[ -d "$REPO_ROOT/logs" ]] && ls "$REPO_ROOT/logs"/*.log &>/dev/null 2>&1; then
-    logs_found=true
-    echo "Repository logs:"
-    ls -lh "$REPO_ROOT/logs"/*.log 2>/dev/null
-    echo ""
+  if [[ -d "$REPO_ROOT/logs" ]]; then
+    log_files=("$REPO_ROOT/logs"/*.log)
+    if (( ${#log_files[@]} > 0 )); then
+      logs_found=true
+      printf '%s\n' "Repository logs:"
+      for log in "${log_files[@]}"; do
+        if [[ -f "$log" ]]; then
+          ls -lh "$log" 2>/dev/null || printf '  %s\n' "$log"
+        fi
+      done
+      printf '\n'
+    fi
+  fi
+
+  if [[ "$nullglob_was_set" -eq 0 ]]; then
+    shopt -u nullglob
   fi
 
   if ! $logs_found; then
-    echo -e "${YELLOW}No logs found.${NC}"
+    printf '%sNo logs found.%s\n' "$UI_YELLOW" "$UI_RESET"
     pause
     return
   fi
 
-  echo "Select a log to view:"
-  echo "  [1] Latest maintenance log"
-  echo "  [2] View all systemd journal (pihole-FTL)"
-  echo "  [3] View all systemd journal (unbound)"
-  echo "  [0] Back to menu"
-  echo ""
-  read -rp "Choice: " log_choice
+  printf '%s\n' "Select a log to view:"
+  printf '%s\n' "  [1] Latest maintenance log"
+  printf '%s\n' "  [2] View all systemd journal (pihole-FTL)"
+  printf '%s\n' "  [3] View all systemd journal (unbound)"
+  printf '%s\n' "  [0] Back to menu"
+  printf '\n'
+  IFS= read -rp "Choice: " log_choice
 
   case "$log_choice" in
     1)
-      local latest_log
-      latest_log=$(ls -t /var/log/pihole_maintenance_pro_*.log 2>/dev/null | head -n1 || echo "")
+      nullglob_was_set=1
+      shopt -q nullglob || nullglob_was_set=0
+      shopt -s nullglob
+      log_files=(/var/log/pihole_maintenance_pro_*.log)
+      for log in "${log_files[@]}"; do
+        if [[ -f "$log" ]]; then
+          if [[ -z "$latest_log" || "$log" -nt "$latest_log" ]]; then
+            latest_log="$log"
+          fi
+        fi
+      done
+      if [[ "$nullglob_was_set" -eq 0 ]]; then
+        shopt -u nullglob
+      fi
       if [[ -n "$latest_log" ]]; then
         if command -v less &>/dev/null; then
           sudo less "$latest_log"
@@ -162,7 +186,7 @@ action_view_logs() {
           pause
         fi
       else
-        echo -e "${RED}No maintenance logs found.${NC}"
+        printf '%sNo maintenance logs found.%s\n' "$UI_RED" "$UI_RESET"
         pause
       fi
       ;;
@@ -178,7 +202,7 @@ action_view_logs() {
       return
       ;;
     *)
-      echo -e "${RED}Invalid choice.${NC}"
+      printf '%sInvalid choice.%s\n' "$UI_RED" "$UI_RESET"
       pause
       ;;
   esac
@@ -190,31 +214,31 @@ action_check_mode() {
 
   # Check if dialog is available
   if ! command -v dialog &>/dev/null; then
-    echo "[INFO] dialog not installed (optional, fallback to text menu available)"
+    log_info "dialog not installed (optional, fallback to text menu available)"
   fi
 
   # Check scripts exist
   if [[ ! -f "$SCRIPT_DIR/post_install_check.sh" ]]; then
-    echo "[FAIL] post_install_check.sh not found"
+    log_err "post_install_check.sh not found"
     all_ok=false
   else
-    echo "[PASS] post_install_check.sh found"
+    log_ok "post_install_check.sh found"
   fi
 
   if [[ ! -f "$REPO_ROOT/tools/pihole_maintenance_pro.sh" ]]; then
-    echo "[WARN] pihole_maintenance_pro.sh not found (optional)"
+    log_warn "pihole_maintenance_pro.sh not found (optional)"
   else
-    echo "[PASS] pihole_maintenance_pro.sh found"
+    log_ok "pihole_maintenance_pro.sh found"
   fi
 
   # Check if menu can start
-  echo "[INFO] Console menu available (text mode)"
+  log_info "Console menu available (text mode)"
 
   if $all_ok; then
-    echo "[PASS] Console menu check completed"
+    log_ok "Console menu check completed"
     return 0
   else
-    echo "[FAIL] Console menu check failed"
+    log_err "Console menu check failed"
     return 1
   fi
 }
@@ -259,17 +283,15 @@ show_dialog_menu() {
 show_text_menu() {
   while true; do
     header
-    echo "Select an option:"
-    echo ""
-    echo "  [1] Post-Install Check (Quick)"
-    echo "  [2] Post-Install Check (Full) - requires sudo"
-    echo "  [3] Show Service URLs"
-    echo "  [4] Manual Steps Guide"
-    echo "  [5] Maintenance Pro (SAFE mode) - requires sudo"
-    echo "  [6] View Logs"
-    echo "  [7] Exit"
-    echo ""
-    read -rp "Choice [1-7]: " choice
+    printf '%s\n\n' "Select an option:"
+    printf '%s\n' "  [1] Post-Install Check (Quick)"
+    printf '%s\n' "  [2] Post-Install Check (Full) - requires sudo"
+    printf '%s\n' "  [3] Show Service URLs"
+    printf '%s\n' "  [4] Manual Steps Guide"
+    printf '%s\n' "  [5] Maintenance Pro (SAFE mode) - requires sudo"
+    printf '%s\n' "  [6] View Logs"
+    printf '%s\n\n' "  [7] Exit"
+    IFS= read -rp "Choice [1-7]: " choice
 
     case $choice in
       1) action_quick_check ;;
@@ -278,10 +300,10 @@ show_text_menu() {
       4) action_manual_steps ;;
       5) action_maintenance_pro ;;
       6) action_view_logs ;;
-      7) clear; echo "Goodbye!"; exit 0 ;;
+      7) clear; printf '%s\n' "Goodbye!"; exit 0 ;;
       "") continue ;;
       *)
-        echo -e "${RED}Invalid choice. Please select 1-7.${NC}"
+        printf '%sInvalid choice. Please select 1-7.%s\n' "$UI_RED" "$UI_RESET"
         sleep 1
         ;;
     esac
@@ -325,8 +347,8 @@ EOF
       fi
       ;;
     *)
-      echo -e "${RED}Unknown option: $1${NC}"
-      echo "Run with --help for usage information."
+      printf '%sUnknown option: %s%s\n' "$UI_RED" "$1" "$UI_RESET"
+      printf '%s\n' "Run with --help for usage information."
       exit 1
       ;;
   esac

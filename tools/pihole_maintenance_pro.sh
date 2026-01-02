@@ -17,29 +17,27 @@
 set -euo pipefail
 IFS=$'\n\t'
 
+# Script paths + UI helpers
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+UI_LIB="${SCRIPT_DIR}/../scripts/lib/ui.sh"
+if [[ -f "$UI_LIB" ]]; then
+  # shellcheck source=/dev/null
+  source "$UI_LIB"
+  ui_init
+fi
+
 # Voller PATH für cron/Nicht-Login-Shells (früh setzen)
-export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH}"
 
 # --------------------------- Colors & symbols -------------------------------
-if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
-  RED='\033[0;31m'
-  GREEN='\033[0;32m'
-  YELLOW='\033[1;33m'
-  BLUE='\033[0;34m'
-  MAGENTA='\033[0;35m'
-  CYAN='\033[0;36m'
-  BOLD='\033[1m'
-  NC='\033[0m'
-else
-  RED=""
-  GREEN=""
-  YELLOW=""
-  BLUE=""
-  MAGENTA=""
-  CYAN=""
-  BOLD=""
-  NC=""
-fi
+RED="${UI_RED:-}"
+GREEN="${UI_GREEN:-}"
+YELLOW="${UI_YELLOW:-}"
+BLUE="${UI_BLUE:-}"
+MAGENTA="${UI_MAGENTA:-}"
+CYAN="${UI_CYAN:-}"
+BOLD="${UI_BOLD:-}"
+NC="${UI_RESET:-}"
 CHECK="${GREEN}✔${NC}"
 WARN="${YELLOW}⚠${NC}"
 FAIL="${RED}✖${NC}"
@@ -48,9 +46,9 @@ FAIL="${RED}✖${NC}"
 # Für sicheren lokalen Selftest (RUN_SELFTEST=1) ohne Root erlauben
 if [[ ${EUID} -ne 0 ]]; then
   if [[ "${RUN_SELFTEST:-0}" == "1" ]]; then
-    echo -e "${YELLOW}Hinweis:${NC} RUN_SELFTEST=1 erkannt – Root-Check übersprungen (APT/Upgrade/Gravity sollten via --no-* Flags deaktiviert sein)."
+    printf '%sHinweis:%s RUN_SELFTEST=1 erkannt – Root-Check übersprungen (APT/Upgrade/Gravity sollten via --no-* Flags deaktiviert sein).\n' "$YELLOW" "$NC"
   else
-    echo -e "${RED}[ERROR]${NC} Bitte mit sudo oder als root ausführen." >&2
+    printf '%s[ERROR]%s Bitte mit sudo oder als root ausführen.\n' "$RED" "$NC" >&2
     exit 1
   fi
 fi
@@ -130,7 +128,7 @@ if [[ -z "$PIHOLE_BIN" ]]; then
     echo "Warnung: pihole CLI nicht im CI vorhanden. Test wird übersprungen."
     exit 0
   else
-    echo -e "${RED}[ERROR]${NC} 'pihole' CLI nicht gefunden. PATH=$PATH" >&2
+    printf '%s[ERROR]%s '\''pihole'\'' CLI nicht gefunden. PATH=%s\n' "$RED" "$NC" "$PATH" >&2
     echo "Auf Pi-hole-Host ausführen oder CLI installieren." >&2
     exit 127
   fi
@@ -147,10 +145,11 @@ if [[ -d "$LOGDIR" && -w "$LOGDIR" ]]; then
   LOGFILE="$LOGDIR/pihole_maintenance_pro_$(date +%Y-%m-%d_%H-%M-%S).log"
 else
   LOGFILE="$TMPDIR/pihole_maintenance_pro_$(date +%Y-%m-%d_%H-%M-%S).log"
-  echo -e "${YELLOW}Hinweis:${NC} /var/log nicht beschreibbar, Log nach $TMPDIR."
+  printf '%sHinweis:%s /var/log nicht beschreibbar, Log nach %s.\n' "$YELLOW" "$NC" "$TMPDIR"
 fi
 
-trap 'rm -rf "$TMPDIR" 2>/dev/null || true' EXIT
+cleanup_tmpdir() { rm -rf "$TMPDIR" 2>/dev/null || true; }
+trap cleanup_tmpdir EXIT INT TERM
 exec > >(tee -a "$LOGFILE") 2>&1
 
 # shellcheck disable=SC2034
@@ -161,16 +160,17 @@ strip_ansi() { sed -r $'s/\x1B\[[0-9;]*[a-zA-Z]//g' | tr -d '\r'; }
 
 echo_hdr() {
   if [[ -t 1 ]]; then clear; fi
-  echo -e "${MAGENTA}╔════════════════════════════════════════════════════════════════════════╗${NC}"
-  echo -e "${MAGENTA}║${NC}   🛰️  ${BOLD}PI-HOLE MAINTENANCE PRO MAX${NC}${MAGENTA}  -  TimInTech  (${CYAN}v5.3.2${MAGENTA})  ║${NC}"
-  echo -e "${MAGENTA}╠════════════════════════════════════════════════════════════════════════╣${NC}"
+  printf '%s╔════════════════════════════════════════════════════════════════════════╗%s\n' "$MAGENTA" "$NC"
+  printf '%s║%s   🛰️  %sPI-HOLE MAINTENANCE PRO MAX%s%s  -  TimInTech  (%sv5.3.2%s)  ║%s\n' \
+    "$MAGENTA" "$NC" "$BOLD" "$NC" "$MAGENTA" "$CYAN" "$MAGENTA" "$NC"
+  printf '%s╠════════════════════════════════════════════════════════════════════════╣%s\n' "$MAGENTA" "$NC"
   if "$PIHOLE_BIN" -v > /dev/null 2>&1; then
     PH_VER="$("$PIHOLE_BIN" -v 2> /dev/null || true)"
-    echo -e "${MAGENTA}║${NC} Version: ${CYAN}${PH_VER:-unbekannt}${NC}"
+    printf '%s║%s Version: %s%s%s\n' "$MAGENTA" "$NC" "$CYAN" "${PH_VER:-unbekannt}" "$NC"
   else
-    echo -e "${MAGENTA}║${NC} ${YELLOW}Pi-hole CLI nicht gefunden${NC}"
+    printf '%s║%s %sPi-hole CLI nicht gefunden%s\n' "$MAGENTA" "$NC" "$YELLOW" "$NC"
   fi
-  echo -e "${MAGENTA}╚════════════════════════════════════════════════════════════════════════╝${NC}"
+  printf '%s╚════════════════════════════════════════════════════════════════════════╝%s\n' "$MAGENTA" "$NC"
 }
 
 run_step() {
@@ -178,7 +178,7 @@ run_step() {
   local step_log="$TMPDIR/step_${n}.log"
   # shellcheck disable=SC2034  # consumed later when printing per-step log paths
   STEP_LOGFILE["$n"]="$step_log"
-  echo -e "\n${BLUE}╔═[Step ${n}]${NC}\n${BLUE}║ ${icon} ${title}${NC}\n${BLUE}╚═>${NC} "
+  printf '\n%s╔═[Step %s]%s\n%s║ %s %s%s\n%s╚═>%s ' "$BLUE" "$n" "$NC" "$BLUE" "$icon" "$title" "$NC" "$BLUE" "$NC"
 
   local out="/dev/null"
   if [[ -t 1 ]]; then
@@ -187,14 +187,14 @@ run_step() {
 
   if [[ "$display_only" == "true" ]]; then
     if bash -lc "$cmd" 2>&1 | tee -a "$out" | strip_ansi > "$step_log"; then
-      echo -e "${CHECK} Erfolg"
+      printf '%s Erfolg\n' "$CHECK"
       STATUS["$n"]="${GREEN}✔ OK${NC}"
       [[ -f "$step_log" ]] && extract_step_data "$n" "$(cat "$step_log")"
     else
-      echo -e "${WARN} Warnung"
+      printf '%s Warnung\n' "$WARN"
       STATUS["$n"]="${YELLOW}⚠ WARN${NC}"
       [[ -s "$step_log" ]] && tail -n 20 "$step_log"
-      [[ "$critical" == "true" ]] && echo -e "${RED}[ERROR] Kritischer Fehler – Abbruch${NC}" && exit 1
+      [[ "$critical" == "true" ]] && printf '%s[ERROR] Kritischer Fehler – Abbruch%s\n' "$RED" "$NC" && exit 1
     fi
     return 0
   fi
@@ -214,15 +214,15 @@ run_step() {
     printf '\r' > "$out" 2> /dev/null || true
   ) &
   if wait "$pid"; then
-    echo -e "\n${CHECK} Erfolg"
+    printf '\n%s Erfolg\n' "$CHECK"
     STATUS["$n"]="${GREEN}✔ OK${NC}"
     [[ -f "$step_log" ]] && extract_step_data "$n" "$(cat "$step_log")"
   else
     local ec=$?
-    echo -e "\n${FAIL} Fehler (Code: $ec)"
+    printf '\n%s Fehler (Code: %s)\n' "$FAIL" "$ec"
     STATUS["$n"]="${RED}✖ FAIL${NC}"
     [[ -f "$step_log" ]] && tail -n 50 "$step_log"
-    [[ "$critical" == "true" ]] && echo -e "${RED}[ERROR] Kritischer Fehler in Step ${n}${NC}" && exit $ec
+    [[ "$critical" == "true" ]] && printf '%s[ERROR] Kritischer Fehler in Step %s%s\n' "$RED" "$n" "$NC" && exit $ec
   fi
 }
 
@@ -248,12 +248,12 @@ extract_step_data() {
 summary() {
   collect_system_info
   echo
-  echo -e "${CYAN}╔═══════════════ PERFORMANCE DASHBOARD ═══════════════╗${NC}"
+  printf '%s╔═══════════════ PERFORMANCE DASHBOARD ═══════════════╗%s\n' "$CYAN" "$NC"
   printf "${CYAN}║${NC} 🚀 Load: %-8s 💾 RAM: %s%%    🌡️  Temp: %s°C    🗄️  Disk: %s%% ${CYAN}║${NC}\n" \
     "${PERFORMANCE_DATA[load]:-N/A}" "${PERFORMANCE_DATA[memory]:-N/A}" "${PERFORMANCE_DATA[temp]:-N/A}" "${PERFORMANCE_DATA[disk]:-N/A}"
-  echo -e "${CYAN}╚═══════════════════════════════════════════════════════╝${NC}"
+  printf '%s╚═══════════════════════════════════════════════════════╝%s\n' "$CYAN" "$NC"
   echo
-  echo -e "${MAGENTA}════════ INTELLIGENTE ZUSAMMENFASSUNG ════════${NC}"
+  printf '%s════════ INTELLIGENTE ZUSAMMENFASSUNG ════════%s\n' "$MAGENTA" "$NC"
   for k in $(printf '%s\n' "${!STATUS[@]}" | sort -n); do
     local step_info=""
     case "$k" in
@@ -277,8 +277,8 @@ summary() {
   done
   echo
   show_recommendations
-  echo -e "Log: ${CYAN}$LOGFILE${NC}"
-  echo -e "Step logs: ${CYAN}$TMPDIR${NC} (werden beim Exit gelöscht)"
+  printf 'Log: %s%s%s\n' "$CYAN" "$LOGFILE" "$NC"
+  printf 'Step logs: %s%s%s (werden beim Exit gelöscht)\n' "$CYAN" "$TMPDIR" "$NC"
 }
 
 get_step_description() {
@@ -334,11 +334,11 @@ show_recommendations() {
     recommendations+=("🚨 Restart Pi-hole FTL: sudo systemctl restart pihole-FTL")
   }
   ((${#warnings[@]})) && {
-    echo -e "\n${YELLOW}════════ WARNINGS ════════${NC}"
+    printf '\n%s════════ WARNINGS ════════%s\n' "$YELLOW" "$NC"
     printf '%s\n' "${warnings[@]}"
   }
   ((${#recommendations[@]})) && {
-    echo -e "\n${BLUE}════════ RECOMMENDATIONS ════════${NC}"
+    printf '\n%s════════ RECOMMENDATIONS ════════%s\n' "$BLUE" "$NC"
     printf '%s\n' "${recommendations[@]}"
   }
 }
@@ -437,11 +437,11 @@ on_exit() {
   else
     summary 2> /dev/null || true
   fi
-  rm -rf "$TMPDIR" 2> /dev/null || true
-  [[ $rc -ne 0 ]] && echo -e "${RED}Script ended with exit code $rc${NC}"
+  cleanup_tmpdir
+  [[ $rc -ne 0 ]] && printf '%sScript ended with exit code %s%s\n' "$RED" "$rc" "$NC"
   exit "$rc"
 }
-trap 'on_exit $?' EXIT
+trap 'on_exit $?' EXIT INT TERM
 
 # --------------------------- Run -------------------------------------------
 echo_hdr
@@ -460,13 +460,13 @@ if ((DO_APT == 1)); then
   export DEBIAN_FRONTEND=noninteractive
   run_step 01 "🔄" "APT: update & upgrade" "apt update && apt -y upgrade" true
   run_step 02 "🧹" "APT: autoremove & autoclean" "apt -y autoremove && apt -y autoclean"
-  if dpkg --print-architecture | grep -q '^armhf$'; then
+      if dpkg --print-architecture | grep -q '^armhf$'; then
     if apt list --upgradable 2> /dev/null | grep -q '^linux-image-rpi-v8'; then
-      echo -e "${YELLOW}Hinweis:${NC} 'linux-image-rpi-v8' ist 64-bit (ARMv8). Auf Pi 3B (ARMv7) ignorierbar."
+      printf '%sHinweis:%s '\''linux-image-rpi-v8'\'' ist 64-bit (ARMv8). Auf Pi 3B (ARMv7) ignorierbar.\n' "$YELLOW" "$NC"
     fi
   fi
 else
-  echo -e "${YELLOW}APT-Schritte übersprungen (--no-apt).${NC}"
+  printf '%sAPT-Schritte übersprungen (--no-apt).%s\n' "$YELLOW" "$NC"
 fi
 
 # 02 – Security Checks (optional display)
@@ -486,7 +486,7 @@ command -v clamscan > /dev/null 2>&1 && run_step 29 "🦠" "Security: clamav" "c
 PIHOLE_LOG="/var/log/pihole.log"
 if [[ -f "$PIHOLE_LOG" ]]; then
   LOGSIZE=$(stat -c %s "$PIHOLE_LOG" 2> /dev/null || echo 0)
-  ((LOGSIZE > 1073741824)) && echo -e "${YELLOW}WARNUNG: pihole.log > 1GB! Empfehlung: logrotate aktivieren.${NC}"
+  ((LOGSIZE > 1073741824)) && printf '%sWARNUNG: pihole.log > 1GB! Empfehlung: logrotate aktivieren.%s\n' "$YELLOW" "$NC"
 fi
 
 # Backup-Integration (optional)
@@ -517,7 +517,7 @@ if ((DO_UPGRADE == 1)); then
   backup_pihole
   run_step 04 "🆙" "Pi-hole self-update" "\"$PIHOLE_BIN\" -up"
 else
-  echo -e "${YELLOW}Pi-hole Upgrade übersprungen (--no-upgrade).${NC}"
+  printf '%sPi-hole Upgrade übersprungen (--no-upgrade).%s\n' "$YELLOW" "$NC"
 fi
 
 # 05 – Gravity
@@ -525,7 +525,7 @@ if ((DO_GRAVITY == 1)); then
   backup_pihole
   run_step 05 "📋" "Update Gravity / Blocklists" "\"$PIHOLE_BIN\" -g"
 else
-  echo -e "${YELLOW}Gravity-Update übersprungen (--no-gravity).${NC}"
+  printf '%sGravity-Update übersprungen (--no-gravity).%s\n' "$YELLOW" "$NC"
 fi
 
 # 06 – optionaler FTL-Restart (v6: nur bei Bedarf)
@@ -557,7 +557,7 @@ if command -v sqlite3 > /dev/null 2>&1 && [[ -f "$FTL_DB" ]]; then
   run_step 12 "📈" "Top 5 Domains (FTL)" $'sqlite3 -readonly "$FTL_DB" "SELECT domain, COUNT(1) c FROM queries GROUP BY domain ORDER BY c DESC LIMIT 5;" || true' false true
   run_step 13 "👥" "Top 5 Clients (FTL)" $'sqlite3 -readonly "$FTL_DB" "SELECT client, COUNT(1) c FROM queries GROUP BY client ORDER BY c DESC LIMIT 5;" || true' false true
 else
-  echo -e "${YELLOW}sqlite3 oder FTL DB nicht gefunden – Überspringe Top-Listen.${NC}"
+  printf '%ssqlite3 oder FTL DB nicht gefunden – Überspringe Top-Listen.%s\n' "$YELLOW" "$NC"
 fi
 
 # 14 – Abschluss (Summary/JSON kommt aus EXIT-Trap)

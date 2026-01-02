@@ -7,19 +7,13 @@ set -euo pipefail
 # =============================================
 
 VERSION="1.0.0"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
-
-# Colors
-if [[ -t 1 ]]; then
-  RED='\033[0;31m'
-  GREEN='\033[0;32m'
-  YELLOW='\033[1;33m'
-  BLUE='\033[0;34m'
-  BOLD='\033[1m'
-  NC='\033[0m'
-else
-  RED='' GREEN='' YELLOW='' BLUE='' BOLD='' NC=''
+UI_LIB="${SCRIPT_DIR}/lib/ui.sh"
+if [[ -f "$UI_LIB" ]]; then
+  # shellcheck source=/dev/null
+  source "$UI_LIB"
+  ui_init
 fi
 
 # Counters
@@ -31,27 +25,26 @@ FAIL_COUNT=0
 # HELPER FUNCTIONS
 # =============================================
 pass() {
-  echo -e "${GREEN}[PASS]${NC} $*"
+  ui_pass "$*"
   PASS_COUNT=$((PASS_COUNT + 1))
 }
 
 warn() {
-  echo -e "${YELLOW}[WARN]${NC} $*"
+  ui_warn "$*"
   WARN_COUNT=$((WARN_COUNT + 1))
 }
 
 fail() {
-  echo -e "${RED}[FAIL]${NC} $*"
+  ui_fail "$*"
   FAIL_COUNT=$((FAIL_COUNT + 1))
 }
 
 info() {
-  echo -e "${BLUE}[INFO]${NC} $*"
+  ui_info "$*"
 }
 
 section() {
-  echo ""
-  echo -e "${BLUE}=== $* ===${NC}"
+  ui_section "$*"
 }
 
 
@@ -69,13 +62,21 @@ list_shell_scripts() {
   fi
 }
 
+cd_repo_root() {
+  if ! cd "$REPO_ROOT"; then
+    fail "Cannot change to repo root: $REPO_ROOT"
+    return 1
+  fi
+  return 0
+}
+
 # =============================================
 # TEST FUNCTIONS
 # =============================================
 test_bash_syntax() {
   section "Bash Syntax Checks"
 
-  cd "$REPO_ROOT"
+  cd_repo_root || return 1
 
   while IFS= read -r script; do
     if [[ ! -f "$script" ]]; then
@@ -94,7 +95,7 @@ test_bash_syntax() {
 test_executable_bits() {
   section "Executable Permissions Check"
 
-  cd "$REPO_ROOT"
+  cd_repo_root || return 1
 
   while IFS= read -r script; do
     if [[ ! -f "$script" ]]; then
@@ -125,7 +126,7 @@ test_executable_bits() {
 test_line_endings() {
   section "Line Endings Check (CRLF Detection)"
 
-  cd "$REPO_ROOT"
+  cd_repo_root || return 1
 
   while IFS= read -r script; do
     if [[ ! -f "$script" ]]; then
@@ -144,7 +145,7 @@ test_line_endings() {
 test_readme_code_fences() {
   section "README Code Fence Balance Check"
 
-  cd "$REPO_ROOT"
+  cd_repo_root || return 1
 
   # Use Python for accurate fence checking
   if ! command -v python3 &>/dev/null; then
@@ -202,7 +203,7 @@ PY
 test_required_files() {
   section "Required Files Check"
 
-  cd "$REPO_ROOT" || return 1
+  cd_repo_root || return 1
 
   local file
   for file in install.sh README.md README.de.md start_suite.py scripts/post_install_check.sh scripts/console_menu.sh .gitignore; do
@@ -217,7 +218,7 @@ test_required_files() {
 test_optional_files() {
   section "Optional Files Check"
 
-  cd "$REPO_ROOT" || return 1
+  cd_repo_root || return 1
 
   local file
   for file in tools/pihole_maintenance_pro.sh docs/CONSOLE_MENU.md; do
@@ -283,20 +284,20 @@ print_summary() {
   echo "┌─────────────────────────────────────────────────────────────────┐"
   echo "│                    Repository Self-Test Summary                │"
   echo "├─────────────────────────────────────────────────────────────────┤"
-  printf "│ ${GREEN}PASS:${NC} %-57s│\n" "$PASS_COUNT"
-  printf "│ ${YELLOW}WARN:${NC} %-57s│\n" "$WARN_COUNT"
-  printf "│ ${RED}FAIL:${NC} %-57s│\n" "$FAIL_COUNT"
+  printf "│ %sPASS:%s %-57s│\n" "$UI_GREEN" "$UI_RESET" "$PASS_COUNT"
+  printf "│ %sWARN:%s %-57s│\n" "$UI_YELLOW" "$UI_RESET" "$WARN_COUNT"
+  printf "│ %sFAIL:%s %-57s│\n" "$UI_RED" "$UI_RESET" "$FAIL_COUNT"
   echo "└─────────────────────────────────────────────────────────────────┘"
   echo ""
 
   if [[ $FAIL_COUNT -gt 0 ]]; then
-    echo -e "${RED}Repository self-test FAILED. Please fix the issues above.${NC}"
+    printf '%sRepository self-test FAILED. Please fix the issues above.%s\n' "$UI_RED" "$UI_RESET"
     return 1
   elif [[ $WARN_COUNT -gt 0 ]]; then
-    echo -e "${YELLOW}Repository self-test passed with warnings.${NC}"
+    printf '%sRepository self-test passed with warnings.%s\n' "$UI_YELLOW" "$UI_RESET"
     return 0
   else
-    echo -e "${GREEN}Repository self-test PASSED!${NC}"
+    printf '%sRepository self-test PASSED!%s\n' "$UI_GREEN" "$UI_RESET"
     return 0
   fi
 }

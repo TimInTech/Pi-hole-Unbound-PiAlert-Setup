@@ -6,7 +6,13 @@ set -o pipefail
 # =============================================
 # GLOBAL VARIABLES
 # =============================================
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+UI_LIB="${SCRIPT_DIR}/scripts/lib/ui.sh"
+if [[ -f "$UI_LIB" ]]; then
+  # shellcheck source=/dev/null
+  source "$UI_LIB"
+  ui_init
+fi
 
 # Stable paths (avoid writing root-owned files into the git repo)
 LOG_DIR="/var/log/pihole-suite"
@@ -69,46 +75,16 @@ CONTAINER_PIHOLE_WEB_PORT=8080
 # =============================================
 # LOGGING
 # =============================================
-log() { 
-  local msg
-  msg="[\033[34m$(date +"%H:%M:%S")\033[0m] $*"
-  echo -e "$msg"
-  if [[ -w "$(dirname "$LOG_FILE")" ]]; then
-    echo -e "$msg" >> "$LOG_FILE" 2>/dev/null || true
-  fi
-}
-log_success() { 
-  local msg
-  msg="[\033[34m$(date +"%H:%M:%S")\033[0m] \033[32m✓\033[0m $*"
-  echo -e "$msg"
-  if [[ -w "$(dirname "$LOG_FILE")" ]]; then
-    echo -e "$msg" >> "$LOG_FILE" 2>/dev/null || true
-  fi
-}
-log_error() { 
-  local msg
-  msg="[\033[34m$(date +"%H:%M:%S")\033[0m] \033[31m✗\033[0m $*"
-  echo -e "$msg" >&2
-  if [[ -w "$(dirname "$LOG_FILE")" ]]; then
-    echo -e "$msg" >> "$LOG_FILE" 2>/dev/null || true
-    echo -e "$msg" >> "$ERROR_LOG" 2>/dev/null || true
-  fi
-}
-log_warning() { 
-  local msg
-  msg="[\033[34m$(date +"%H:%M:%S")\033[0m] \033[33m!\033[0m $*"
-  echo -e "$msg"
-  if [[ -w "$(dirname "$LOG_FILE")" ]]; then
-    echo -e "$msg" >> "$LOG_FILE" 2>/dev/null || true
-  fi
-}
+log() { log_info "$@"; }
+log_success() { log_ok "$@"; }
+log_warning() { log_warn "$@"; }
 
 init_runtime_paths() {
   # Enforce: clone as normal user, execute via sudo.
   # (root shells like "su -" are intentionally rejected)
   if [[ ${EUID:-$(id -u)} -eq 0 && ( -z "${SUDO_USER:-}" || "${SUDO_USER:-}" == "root" ) ]]; then
-    echo "Do not run this installer as root directly." >&2
-    echo "Clone the repo as a normal user and run it via: sudo ./install.sh" >&2
+    log_err "Do not run this installer as root directly."
+    log_err "Clone the repo as a normal user and run it via: sudo ./install.sh"
     exit 1
   fi
 
@@ -122,6 +98,8 @@ init_runtime_paths() {
     LOG_FILE="${SCRIPT_DIR}/install.log"
     ERROR_LOG="${SCRIPT_DIR}/install_errors.log"
   fi
+  UI_LOG_FILE="$LOG_FILE"
+  UI_ERROR_LOG="$ERROR_LOG"
 
   # Ensure state dir exists; fall back to repo dir if it cannot be used.
   if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
@@ -169,6 +147,20 @@ ensure_suite_env_file() {
   grep -q '^SUITE_LOG_LEVEL=' "$ENV_FILE" 2>/dev/null || echo "SUITE_LOG_LEVEL=INFO" >> "$ENV_FILE"
 
   sudo chmod 640 "$ENV_FILE" 2>/dev/null || true
+}
+
+
+ensure_python_venv() {
+  # Ensure a working venv with an executable python at $venv_dir/bin/python
+  # Recreates the venv if python is missing (common after interrupted installs).
+  local venv_dir="$1"
+  [[ -z "$venv_dir" ]] && return 1
+
+  if [[ ! -x "$venv_dir/bin/python" ]]; then
+    log_warning "Python venv missing/broken at $venv_dir; recreating"
+    sudo rm -rf "$venv_dir" 2>/dev/null || true
+    python3 -m venv "$venv_dir"
+  fi
 }
 
 # =============================================
@@ -865,7 +857,20 @@ setup_pihole_host() {
   if ! $DRY_RUN; then
     if ! command -v pihole &>/dev/null; then
       # Install Pi-hole non-interactively (SSH-safe)
-      curl -sSL https://install.pi-hole.net | sudo env \
+      # Security hardening: do not execute remote content via pipe.
+      local pihole_installer
+      pihole_installer="$(mktemp)" || { log_error "Failed to create temp file"; exit 1; }
+      trap 'rm -f "$pihole_installer" 2>/dev/null || true' RETURN
+
+      if ! curl -fsSL --proto '=https' --tlsv1.2 https://install.pi-hole.net -o "$pihole_installer"; then
+        log_error "Failed to download Pi-hole installer"
+        rm -f "$pihole_installer" 2>/dev/null || true
+        exit 1
+      fi
+      chmod 0700 "$pihole_installer" 2>/dev/null || true
+      log_warning "Note: Pi-hole installer is downloaded over HTTPS but not cryptographically verified (no checksum/signature available)."
+
+      sudo env \
         PIHOLE_SKIP_OS_CHECK=true \
         PIHOLE_INSTALL_AUTO=true \
         DEBIAN_FRONTEND=noninteractive \
@@ -873,8 +878,8 @@ setup_pihole_host() {
         PIHOLE_DNS_2=no \
         DNS1=127.0.0.1#$UNBOUND_PORT \
         DNS2=no \
-        bash -s -- --unattended || {
-        log_error "Pi-hole install failed"; exit 1;
+        bash "$pihole_installer" --unattended || {
+        log_error "Pi-hole install failed"; rm -f "$pihole_installer" 2>/dev/null || true; exit 1;
       }
     fi
 
@@ -961,7 +966,7 @@ setup_netalertx() {
 
     # Detect legacy mounts and warn about migration
     if [[ -d /opt/netalertx/config || -d /opt/netalertx/db ]]; then
-      if [[ -n "$(ls -A /opt/netalertx/config 2>/dev/null || true)" || -n "$(ls -A /opt/netalertx/db 2>/dev/null || true)" ]]; then
+      if ui_dir_not_empty "/opt/netalertx/config" || ui_dir_not_empty "/opt/netalertx/db"; then
         log_warning "Detected legacy NetAlertX data dirs (/opt/netalertx/config,/opt/netalertx/db). New installs use /opt/netalertx/data mounted to /data; migrate your data if needed."
       fi
     fi
@@ -1024,10 +1029,20 @@ setup_python_suite() {
     local suite_user="pihole-suite"
     local suite_group="pihole-suite"
     local suite_state_dir="$STATE_DIR"
+    local suite_app_dir="$STATE_DIR/app"
+    local suite_venv_dir="$STATE_DIR/venv"
     local suite_data_dir="$STATE_DIR/data"
-    local suite_entrypoint="$SCRIPT_DIR/start_suite.py"
+    local suite_entrypoint="$suite_app_dir/start_suite.py"
 
     ensure_suite_env_file "$suite_data_dir"
+
+    # Keep a stable, system-accessible copy of the suite code under $STATE_DIR.
+    sudo mkdir -p "$suite_app_dir" 2>/dev/null || true
+    if [[ -f "$SCRIPT_DIR/start_suite.py" ]]; then
+      sudo install -m 0644 "$SCRIPT_DIR/start_suite.py" "$suite_entrypoint"
+    else
+      log_warning "Python Suite entrypoint missing at $SCRIPT_DIR/start_suite.py (service may fail to start)"
+    fi
 
     if ! getent group "$suite_group" >/dev/null 2>&1; then
       sudo groupadd --system "$suite_group"
@@ -1037,37 +1052,32 @@ setup_python_suite() {
     fi
     sudo mkdir -p "$suite_state_dir"
 
-    if [[ ! -x "$SCRIPT_DIR/venv/bin/python" ]]; then
-      log_warning "Python venv missing/broken at $SCRIPT_DIR/venv; recreating"
-      sudo rm -rf "$SCRIPT_DIR/venv" 2>/dev/null || true
-      python3 -m venv "$SCRIPT_DIR/venv"
-    fi
-    "$SCRIPT_DIR/venv/bin/pip" install -r "$SCRIPT_DIR/requirements.txt" || {
+    ensure_python_venv "$suite_venv_dir"
+    "$suite_venv_dir/bin/pip" install -r "$SCRIPT_DIR/requirements.txt" || {
       log_error "Python requirements failed"; exit 1;
     }
-    sudo chown -R "$suite_user":"$suite_group" "$suite_data_dir" "$SCRIPT_DIR/venv" "$suite_state_dir" 2>/dev/null || true
+    sudo chown -R "$suite_user":"$suite_group" "$suite_data_dir" "$suite_app_dir" "$suite_venv_dir" "$suite_state_dir" 2>/dev/null || true
     sudo chown root:"$suite_group" "$ENV_FILE"
     sudo chmod 640 "$ENV_FILE"
     [[ -f "$suite_entrypoint" ]] || log_warning "Python Suite entrypoint missing at $suite_entrypoint (service may need code before start)"
 
     if [[ "$CONTAINER_MODE" == false ]]; then
       local protect_home_value="true"
-      if [[ "$SCRIPT_DIR" == /home/* ]]; then
-        protect_home_value="read-only"
-      fi
 
       local read_write_paths="$suite_state_dir"
 
-      cat > /tmp/pihole-suite.service <<EOF
+      local tmp_unit
+      tmp_unit="$(mktemp)"
+      cat > "$tmp_unit" <<EOF
 [Unit]
 Description=Python Suite Service
 After=network.target
 [Service]
 User=$suite_user
 Group=$suite_group
-WorkingDirectory=$SCRIPT_DIR
+WorkingDirectory=$suite_app_dir
 EnvironmentFile=$ENV_FILE
-ExecStart=$SCRIPT_DIR/venv/bin/python $suite_entrypoint
+ExecStart=$suite_venv_dir/bin/python $suite_entrypoint
 Restart=always
 RestartSec=3
 UMask=027
@@ -1094,7 +1104,8 @@ CapabilityBoundingSet=
 [Install]
 WantedBy=multi-user.target
 EOF
-      sudo mv /tmp/pihole-suite.service /etc/systemd/system/
+      sudo install -m 0644 "$tmp_unit" /etc/systemd/system/pihole-suite.service
+      rm -f "$tmp_unit"
       sudo systemctl daemon-reload
       sudo systemctl enable --now pihole-suite.service
 
@@ -1103,6 +1114,7 @@ EOF
         systemctl is-active --quiet pihole-suite.service 2>/dev/null && break
         sleep 1
       done
+      sleep 1
       if ! systemctl is-active --quiet pihole-suite.service 2>/dev/null; then
         log_error "Python Suite service failed to start"
         sudo systemctl --no-pager --full status pihole-suite.service 2>/dev/null || true
@@ -1238,14 +1250,13 @@ main() {
   echo "├─────────────────────────────────────────────────────────────────┤"
   echo "│ Configuration:                                                  │"
   
-  # Get API key safely
-  local api_key_preview="<not_set>"
-  if [[ -f "$ENV_FILE" && "$INSTALL_PYTHON_SUITE" == true ]]; then
-    api_key_preview="$(grep SUITE_API_KEY "$ENV_FILE" 2>/dev/null | cut -d= -f2 | head -c20 || echo '<not_set>')"
-  fi
-  
+  # Never print API keys (even partial previews). Only indicate whether it is set.
   if [[ "$INSTALL_PYTHON_SUITE" == true ]]; then
-    echo "│  • API Key: ${api_key_preview}...     │"
+    if [[ -f "$ENV_FILE" ]] && grep -q '^SUITE_API_KEY=' "$ENV_FILE" 2>/dev/null; then
+      echo "│  • API Key: [SET]                                               │"
+    else
+      echo "│  • API Key: [MISSING]                                            │"
+    fi
   fi
   
   if [[ "$CONTAINER_MODE" == true ]]; then

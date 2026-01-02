@@ -18,17 +18,12 @@ fi
 
 VERSION="1.0.0"
 SCRIPT_NAME="$(basename "$0")"
-
-# Colors (only if TTY)
-if [[ -t 1 ]]; then
-  RED='\033[0;31m'
-  GREEN='\033[0;32m'
-  YELLOW='\033[1;33m'
-  BLUE='\033[0;34m'
-  BOLD='\033[1m'
-  NC='\033[0m'
-else
-  RED='' GREEN='' YELLOW='' BLUE='' BOLD='' NC=''
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+UI_LIB="${SCRIPT_DIR}/lib/ui.sh"
+if [[ -f "$UI_LIB" ]]; then
+  # shellcheck source=/dev/null
+  source "$UI_LIB"
+  ui_init
 fi
 
 # Status counters
@@ -77,27 +72,26 @@ detect_unbound_port() {
 # HELPER FUNCTIONS
 # =============================================
 pass() {
-  echo -e "${GREEN}[PASS]${NC} $*"
+  ui_pass "$*"
   ((PASS_COUNT++))
 }
 
 warn() {
-  echo -e "${YELLOW}[WARN]${NC} $*"
+  ui_warn "$*"
   ((WARN_COUNT++))
 }
 
 fail() {
-  echo -e "${RED}[FAIL]${NC} $*"
+  ui_fail "$*"
   ((FAIL_COUNT++))
 }
 
 info() {
-  echo -e "${BLUE}[INFO]${NC} $*"
+  ui_info "$*"
 }
 
 section() {
-  echo ""
-  echo -e "${BLUE}=== $* ===${NC}"
+  ui_section "$*"
 }
 
 # =============================================
@@ -509,7 +503,7 @@ check_netalertx() {
     pass "NetAlertX data dir present: /opt/netalertx/data"
   fi
   if [[ -d /opt/netalertx/config || -d /opt/netalertx/db ]]; then
-    if [[ -n "$(ls -A /opt/netalertx/config 2>/dev/null || true)" ||           -n "$(ls -A /opt/netalertx/db 2>/dev/null || true)" ]]; then
+    if ui_dir_not_empty "/opt/netalertx/config" || ui_dir_not_empty "/opt/netalertx/db"; then
       warn "Legacy NetAlertX dirs detected (/opt/netalertx/config,/opt/netalertx/db). New mount uses /opt/netalertx/data -> /data; migrate if needed."
     fi
   fi
@@ -675,13 +669,13 @@ print_summary() {
   echo ""
 
   if [[ $FAIL_COUNT -gt 0 ]]; then
-    echo -e "${RED}Some checks failed. Please review the output above.${NC}"
+    printf '%sSome checks failed. Please review the output above.%s\n' "$UI_RED" "$UI_RESET"
     return 1
   elif [[ $WARN_COUNT -gt 0 ]]; then
-    echo -e "${YELLOW}Some checks produced warnings. Review recommended.${NC}"
+    printf '%sSome checks produced warnings. Review recommended.%s\n' "$UI_YELLOW" "$UI_RESET"
     return 0
   else
-    echo -e "${GREEN}All checks passed successfully!${NC}"
+    printf '%sAll checks passed successfully!%s\n' "$UI_GREEN" "$UI_RESET"
     return 0
   fi
 }
@@ -764,7 +758,7 @@ show_menu() {
       4) show_service_status ;;
       5) check_network_info ;;
       6) echo "Exiting."; exit 0 ;;
-      *) echo -e "${RED}Invalid option. Please select 1-6.${NC}" ;;
+      *) printf '%sInvalid option. Please select 1-6.%s\n' "$UI_RED" "$UI_RESET" ;;
     esac
   done
 }
@@ -850,7 +844,7 @@ main() {
       fi
       ;;
     *)
-      echo -e "${RED}Unknown option: $1${NC}"
+      printf '%sUnknown option: %s%s\n' "$UI_RED" "$1" "$UI_RESET"
       show_usage
       exit 1
       ;;
