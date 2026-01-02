@@ -761,7 +761,7 @@ configure_pihole_v6_toml_upstreams() {
     trap 'rm -f "$temp_file" 2>/dev/null || true' EXIT
 
     sudo awk -v upstream="$upstream" '
-      BEGIN { in_dns=0; dns_exists=0 }
+      BEGIN { in_dns=0; dns_exists=0; skipping_upstreams=0 }
 
       # Track when we enter [dns] section
       /^\[dns\]/ {
@@ -777,8 +777,22 @@ configure_pihole_v6_toml_upstreams() {
         in_dns=0
       }
 
-      # Skip upstreams lines only within [dns] section
+      # If we are replacing an existing multi-line upstreams array, skip until closing bracket
+      skipping_upstreams {
+        if ($0 ~ /^[[:space:]]*\][[:space:]]*$/) {
+          skipping_upstreams=0
+        }
+        next
+      }
+
+      # Replace existing upstreams (single-line or multi-line) within [dns] section
       in_dns && /^[[:space:]]*upstreams[[:space:]]*=/ {
+        # If this is a multi-line array (e.g. upstreams = [
+  ...
+]) then skip until closing bracket
+        if ($0 ~ /\[[[:space:]]*$/ && $0 !~ /\][[:space:]]*$/) {
+          skipping_upstreams=1
+        }
         next
       }
 
