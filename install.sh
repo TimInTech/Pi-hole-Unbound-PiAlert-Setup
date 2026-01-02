@@ -350,13 +350,66 @@ check_dependencies() {
 }
 
 handle_systemd_resolved() {
-  if [[ -f /etc/os-release ]] && grep -q "ubuntu" /etc/os-release; then
-    if systemctl is-active --quiet systemd-resolved 2>/dev/null; then
-      log "Stopping systemd-resolved..."
-      sudo systemctl stop systemd-resolved || true
-      sudo systemctl disable systemd-resolved || true
-      [[ -L "$RESOLV_CONF" ]] && sudo mv -f "$RESOLV_CONF" "$RESOLV_CONF_BACKUP"
-      echo "nameserver 1.1.1.1" | sudo tee "$RESOLV_CONF" >/dev/null
+  [[ "$CONTAINER_MODE" == true ]] && return 0
+  command -v systemctl >/dev/null 2>&1 || return 0
+
+  # systemd-resolved's stub listener (127.0.0.53/54:53) can block Pi-hole/dnsmasq from binding to :53.
+  # Prefer disabling only the stub listener (keeps resolved functional) and fall back to stop/mask if needed.
+  if ! systemctl is-active --quiet systemd-resolved 2>/dev/null; then
+    return 0
+  fi
+
+  local resolved_conflict=true
+  if command -v ss >/dev/null 2>&1; then
+    # Avoid filter expressions (vary by iproute2 build); parse plain output.
+    if ss -H -lntup 2>/dev/null | grep -E '(^|[[:space:]])127\.0\.0\.(53|54):53([[:space:]]|$)' >/dev/null; then
+      resolved_conflict=true
+    elif ss -H -lntup 2>/dev/null | grep -E ':53[[:space:]]' | grep -qi systemd-resolve; then
+      resolved_conflict=true
+    else
+      resolved_conflict=false
+    fi
+  fi
+
+  [[ "$resolved_conflict" == true ]] || return 0
+
+  log_warning "systemd-resolved appears to be using port 53 (conflicts with Pi-hole); disabling stub listener"
+
+  local dropin_dir="/etc/systemd/resolved.conf.d"
+  local dropin_file="$dropin_dir/99-pihole-no-stub.conf"
+  sudo mkdir -p "$dropin_dir" 2>/dev/null || true
+
+  sudo bash -c 'cat > '"$dropin_file"' <<"EOF"
+[Resolve]
+DNSStubListener=no
+EOF' || true
+
+  sudo systemctl restart systemd-resolved 2>/dev/null || true
+
+  # Ensure /etc/resolv.conf does not point to the stub resolver.
+  # Keep this conservative: only rewrite when it is a symlink to stub-resolv.conf or references 127.0.0.53/54.
+  if [[ -f "$RESOLV_CONF" && ! -f "$RESOLV_CONF_BACKUP" ]]; then
+    sudo cp -a "$RESOLV_CONF" "$RESOLV_CONF_BACKUP" 2>/dev/null || true
+  fi
+
+  if [[ -L "$RESOLV_CONF" ]]; then
+    local link_target
+    link_target="$(readlink "$RESOLV_CONF" 2>/dev/null || true)"
+    if [[ "$link_target" == */stub-resolv.conf* && -f /run/systemd/resolve/resolv.conf ]]; then
+      sudo ln -sf /run/systemd/resolve/resolv.conf "$RESOLV_CONF" || true
+    fi
+  fi
+
+  if grep -qE '^[[:space:]]*nameserver[[:space:]]+127\.0\.0\.(53|54)([[:space:]]|$)' "$RESOLV_CONF" 2>/dev/null; then
+    printf '%s\n' "nameserver 1.1.1.1" | sudo tee "$RESOLV_CONF" >/dev/null
+  fi
+
+  # If resolved still binds to :53, stop + disable + mask to prevent reactivation.
+  if command -v ss >/dev/null 2>&1; then
+    if ss -H -lntup 2>/dev/null | grep -E ':53[[:space:]]' | grep -qi systemd-resolve; then
+      log_warning "systemd-resolved still listening on port 53; disabling and masking service"
+      sudo systemctl disable --now systemd-resolved || true
+      sudo systemctl mask systemd-resolved || true
     fi
   fi
 }
