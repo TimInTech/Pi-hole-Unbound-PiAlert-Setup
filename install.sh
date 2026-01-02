@@ -738,8 +738,6 @@ EOF
 # =============================================
 configure_pihole_v6_toml_upstreams() {
   local toml_file="/etc/pihole/pihole.toml"
-  local temp_file
-  temp_file="$(mktemp)" || { log_error "Failed to create temp file"; exit 1; }
 
   # Create the file if it doesn't exist
   if [[ ! -f "$toml_file" ]]; then
@@ -752,66 +750,64 @@ configure_pihole_v6_toml_upstreams() {
   sudo cp -a "$toml_file" "$backup_file"
   log "Backup created: $backup_file"
 
-
   local upstream="127.0.0.1#${UNBOUND_PORT}"
-  local configured=false
 
-  # Prefer FTL CLI config (does validation and writes correct TOML)
+  # Always ensure the value is persisted in pihole.toml.
+  # Note: `pihole-FTL --config` may update runtime config but not necessarily write TOML.
+  (
+    set -e
+    local temp_file
+    temp_file="$(mktemp)" || { log_error "Failed to create temp file"; exit 1; }
+    trap 'rm -f "$temp_file" 2>/dev/null || true' EXIT
+
+    sudo awk -v upstream="$upstream" '
+      BEGIN { in_dns=0; dns_exists=0 }
+
+      # Track when we enter [dns] section
+      /^\[dns\]/ {
+        in_dns=1
+        dns_exists=1
+        print
+        print "  upstreams = [ \"" upstream "\" ]"
+        next
+      }
+
+      # Track when we leave [dns] section
+      /^\[/ && !/^\[dns\]/ {
+        in_dns=0
+      }
+
+      # Skip upstreams lines only within [dns] section
+      in_dns && /^[[:space:]]*upstreams[[:space:]]*=/ {
+        next
+      }
+
+      # Print all other lines
+      { print }
+
+      # At end of file, if [dns] was never found, add it
+      END {
+        if (!dns_exists) {
+          print ""
+          print "[dns]"
+          print "  upstreams = [ \"" upstream "\" ]"
+        }
+      }
+    ' "$toml_file" > "$temp_file"
+
+    sudo mv "$temp_file" "$toml_file"
+    sudo chown pihole:pihole "$toml_file"
+    sudo chmod 0644 "$toml_file"
+  )
+
+  # Prefer FTL CLI config as well (does validation); do not rely on it for persistence.
   if command -v pihole-FTL >/dev/null 2>&1; then
     log "Setting Pi-hole upstream via pihole-FTL --config (dns.upstreams)..."
     if sudo pihole-FTL --config dns.upstreams "[ \"${upstream}\" ]" >/dev/null 2>&1; then
-      configured=true
       log_success "Configured dns.upstreams via pihole-FTL"
     else
-      log_warning "pihole-FTL --config failed; falling back to TOML rewrite"
+      log_warning "pihole-FTL --config failed (TOML already updated)"
     fi
-  fi
-
-  if [[ "$configured" != true ]]; then
-  # Single-pass awk rewrite: ensure [dns] exists, remove old upstreams, insert new upstream
-  sudo awk -v upstream="127.0.0.1#${UNBOUND_PORT}" '
-    BEGIN { in_dns=0; dns_exists=0; dns_written=0 }
-
-    # Track when we enter [dns] section
-    /^\[dns\]/ {
-      in_dns=1
-      dns_exists=1
-      print
-      print "upstreams = [\"" upstream "\"]"
-      dns_written=1
-      next
-    }
-
-    # Track when we leave [dns] section
-    /^\[/ && !/^\[dns\]/ {
-      in_dns=0
-    }
-
-    # Skip upstreams lines only within [dns] section
-    in_dns && /^[[:space:]]*upstreams[[:space:]]*=/ {
-      next
-    }
-
-    # Print all other lines
-    { print }
-
-    # At end of file, if [dns] was never found, add it
-    END {
-      if (!dns_exists) {
-        print ""
-        print "[dns]"
-        print "upstreams = [\"" upstream "\"]"
-      }
-    }
-  ' "$toml_file" > "$temp_file"
-
-  # Move temp file to final location
-  sudo mv "$temp_file" "$toml_file"
-
-  # Restore ownership and permissions
-  sudo chown pihole:pihole "$toml_file"
-  sudo chmod 0644 "$toml_file"
-
   fi
 
   log "Configured DNS upstreams in $toml_file"
@@ -822,7 +818,6 @@ configure_pihole_v6_toml_upstreams() {
     log_error "Failed to restart pihole-FTL"
     exit 1
   fi
-
 
   # Wait until Pi-hole DNS can actually resolve (avoid 'Not Ready' race)
   if command -v dig >/dev/null 2>&1; then
@@ -858,29 +853,28 @@ setup_pihole_host() {
     if ! command -v pihole &>/dev/null; then
       # Install Pi-hole non-interactively (SSH-safe)
       # Security hardening: do not execute remote content via pipe.
-      local pihole_installer
-      pihole_installer="$(mktemp)" || { log_error "Failed to create temp file"; exit 1; }
-      trap 'rm -f "$pihole_installer" 2>/dev/null || true' RETURN
+      # Important: keep temp-file cleanup scoped (avoid global RETURN trap).
+      (
+        set -e
+        local pihole_installer
+        pihole_installer="$(mktemp)" || { log_error "Failed to create temp file"; exit 1; }
+        trap 'rm -f "$pihole_installer" 2>/dev/null || true' EXIT
 
-      if ! curl -fsSL --proto '=https' --tlsv1.2 https://install.pi-hole.net -o "$pihole_installer"; then
-        log_error "Failed to download Pi-hole installer"
-        rm -f "$pihole_installer" 2>/dev/null || true
-        exit 1
-      fi
-      chmod 0700 "$pihole_installer" 2>/dev/null || true
-      log_warning "Note: Pi-hole installer is downloaded over HTTPS but not cryptographically verified (no checksum/signature available)."
+        if ! curl -fsSL --proto '=https' --tlsv1.2 https://install.pi-hole.net -o "$pihole_installer"; then
+          log_error "Failed to download Pi-hole installer"
+          exit 1
+        fi
+        chmod 0700 "$pihole_installer" 2>/dev/null || true
+        log_warning "Note: Pi-hole installer is downloaded over HTTPS but not cryptographically verified (no checksum/signature available)."
 
-      sudo env \
-        PIHOLE_SKIP_OS_CHECK=true \
-        PIHOLE_INSTALL_AUTO=true \
-        DEBIAN_FRONTEND=noninteractive \
-        PIHOLE_DNS_1=127.0.0.1#$UNBOUND_PORT \
-        PIHOLE_DNS_2=no \
-        DNS1=127.0.0.1#$UNBOUND_PORT \
-        DNS2=no \
-        bash "$pihole_installer" --unattended || {
-        log_error "Pi-hole install failed"; rm -f "$pihole_installer" 2>/dev/null || true; exit 1;
-      }
+        sudo env \
+          PIHOLE_SKIP_OS_CHECK=true \
+          PIHOLE_INSTALL_AUTO=true \
+          DEBIAN_FRONTEND=noninteractive \
+          PIHOLE_DNS_1=127.0.0.1#$UNBOUND_PORT \
+          PIHOLE_DNS_2=no \
+          bash "$pihole_installer" --unattended
+      ) || { log_error "Pi-hole install failed"; exit 1; }
     fi
 
 
