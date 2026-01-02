@@ -805,6 +805,19 @@ configure_pihole_v6_toml_upstreams() {
 
   local upstream="127.0.0.1#${UNBOUND_PORT}"
 
+  # Fast-path: avoid rewriting TOML if upstreams already match expected.
+  local current_upstreams=""
+  if command -v pihole-FTL >/dev/null 2>&1; then
+    current_upstreams="$(sudo pihole-FTL --config dns.upstreams 2>/dev/null || true)"
+  fi
+  if [[ -f "$toml_file" ]] \
+    && grep -qF "$upstream" "$toml_file" 2>/dev/null \
+    && [[ "$current_upstreams" == *"$upstream"* ]] \
+    && [[ "$current_upstreams" != *","* ]]; then
+    log_success "Pi-hole upstreams already set to $upstream"
+    return 0
+  fi
+
   # Always ensure the value is persisted in pihole.toml.
   # Note: `pihole-FTL --config` may update runtime config but not necessarily write TOML.
   (
@@ -906,7 +919,14 @@ configure_pihole_v6_toml_upstreams() {
 }
 
 setup_pihole() {
-  [[ "$PIHOLE_OK" == true && "$FORCE" != true ]] && { log "✅ Pi-hole OK"; return; }
+  if [[ "$PIHOLE_OK" == true && "$FORCE" != true ]]; then
+    log "✅ Pi-hole OK"
+    # Still enforce upstream config on resume to avoid stale dns.upstreams (Pi-hole v6).
+    if [[ "$CONTAINER_MODE" == false ]]; then
+      configure_pihole_v6_toml_upstreams
+    fi
+    return
+  fi
 
   if [[ "$CONTAINER_MODE" == true ]]; then
     setup_pihole_container
