@@ -853,9 +853,7 @@ configure_pihole_v6_toml_upstreams() {
 
       # Replace existing upstreams (single-line or multi-line) within [dns] section
       in_dns && /^[[:space:]]*upstreams[[:space:]]*=/ {
-        # If this is a multi-line array (e.g. upstreams = [
-  ...
-]) then skip until closing bracket
+        # If this is a multi-line array (e.g. "upstreams = [") then skip until closing bracket
         if ($0 ~ /\[[[:space:]]*$/ && $0 !~ /\][[:space:]]*$/) {
           skipping_upstreams=1
         }
