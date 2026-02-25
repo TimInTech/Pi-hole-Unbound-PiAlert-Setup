@@ -2,9 +2,6 @@
 set -euo pipefail
 
 # Ensure this script never blocks on sudo password prompts.
-# - If running as root, treat "sudo cmd" as just "cmd".
-# - Otherwise, use "sudo -n" (non-interactive). Calls will fail fast if
-#   sudo access is not available, instead of hanging.
 if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
   sudo() { "$@"; }
 elif command -v sudo &>/dev/null; then
@@ -16,7 +13,7 @@ fi
 # Read-only verification for Pi-hole + Unbound + Pi.Alert setup
 # =============================================
 
-VERSION="1.0.0"
+VERSION="1.0.1"
 SCRIPT_NAME="$(basename "$0")"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 UI_LIB="${SCRIPT_DIR}/lib/ui.sh"
@@ -24,6 +21,15 @@ if [[ -f "$UI_LIB" ]]; then
   # shellcheck source=/dev/null
   source "$UI_LIB"
   ui_init
+else
+  # Minimal fallbacks when ui.sh is unavailable
+  UI_RED='' UI_GREEN='' UI_YELLOW='' UI_BLUE='' UI_BOLD='' UI_RESET=''
+  ui_pass()    { printf '[PASS] %s\n' "$*"; }
+  ui_warn()    { printf '[WARN] %s\n' "$*"; }
+  ui_fail()    { printf '[FAIL] %s\n' "$*"; }
+  ui_info()    { printf '[INFO] %s\n' "$*"; }
+  ui_section() { printf '\n=== %s ===\n' "$*"; }
+  ui_dir_not_empty() { [[ -d "$1" ]] && find "$1" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null | grep -q .; }
 fi
 
 # Status counters
@@ -38,11 +44,9 @@ UNBOUND_PORT=""
 # CONFIG DETECTION FUNCTIONS
 # =============================================
 detect_unbound_port() {
-  # Try to detect Unbound port from Pi-hole v6 config
   local toml_file="/etc/pihole/pihole.toml"
   local detected_port=""
 
-  # Try reading without sudo first (for --steps and non-sudo invocations)
   if [[ -r "$toml_file" ]]; then
     detected_port=$(sed -n '/^\[dns\]/,/^\[/p' "$toml_file" 2>/dev/null | \
       grep 'upstreams' | \
@@ -51,7 +55,6 @@ detect_unbound_port() {
       head -n1 || true)
   fi
 
-  # Fallback: probe for listening Unbound port
   if [[ -z "$detected_port" ]] && command -v ss &>/dev/null; then
     detected_port=$(ss -tuln 2>/dev/null | \
       grep '127.0.0.1:53' | \
@@ -60,7 +63,6 @@ detect_unbound_port() {
       head -n1 || true)
   fi
 
-  # Final fallback: default to 5335
   if [[ -z "$detected_port" ]]; then
     detected_port="5335"
   fi
@@ -98,7 +100,10 @@ section() {
 # MANUAL STEPS DOCUMENTATION
 # =============================================
 show_manual_steps() {
-  cat <<'EOF'
+  # Ensure port is detected for --steps mode too
+  detect_unbound_port
+
+  cat <<EOF
 ┌─────────────────────────────────────────────────────────────────┐
 │        POST-INSTALLATION VERIFICATION - MANUAL STEPS            │
 │                     (Step-by-Step Guide)                        │
@@ -114,37 +119,21 @@ Expected Output:
      Loaded: loaded (/lib/systemd/system/unbound.service; enabled)
      Active: active (running) since ...
 
-What it checks:
-  - Unbound service is running and enabled
-  - No recent errors in service logs
-
 ───────────────────────────────────────────────────────────────────
 Command:
-  sudo ss -tulpen | grep <UNBOUND_PORT>
+  sudo ss -tulpen | grep ${UNBOUND_PORT}
 
 Expected Output:
-  udp   UNCONN 0   0   127.0.0.1:<UNBOUND_PORT>   0.0.0.0:*   users:(("unbound",pid=...))
-  tcp   LISTEN 0   256 127.0.0.1:<UNBOUND_PORT>   0.0.0.0:*   users:(("unbound",pid=...))
-
-What it checks:
-  - Unbound is listening on localhost port <UNBOUND_PORT>
-  - Both UDP and TCP protocols are available
+  udp   UNCONN 0   0   127.0.0.1:${UNBOUND_PORT}   0.0.0.0:*   users:(("unbound",pid=...))
+  tcp   LISTEN 0   256 127.0.0.1:${UNBOUND_PORT}   0.0.0.0:*   users:(("unbound",pid=...))
 
 ───────────────────────────────────────────────────────────────────
 Command:
-  dig cloudflare.com @127.0.0.1 -p <UNBOUND_PORT> +short
+  dig cloudflare.com @127.0.0.1 -p ${UNBOUND_PORT} +short
 
 Expected Output:
   104.16.132.229
   104.16.133.229
-  (or similar IP addresses)
-
-What it checks:
-  - Unbound can successfully resolve DNS queries
-  - Recursive DNS resolution is working
-  - DoT (DNS-over-TLS) upstream is functional
-
-───────────────────────────────────────────────────────────────────
 
 STEP 2: Verify Pi-hole Service
 ───────────────────────────────────────────────────────────────────
@@ -152,12 +141,7 @@ Command:
   pihole -v
 
 Expected Output:
-  Pi-hole version is v6.x.x (vDev branch)
-  FTL version is v6.x.x
-
-What it checks:
-  - Pi-hole v6 is installed
-  - FTL (Faster Than Light) DNS engine is present
+  Pi-hole version is v6.x.x
 
 ───────────────────────────────────────────────────────────────────
 Command:
@@ -165,12 +149,7 @@ Command:
 
 Expected Output:
   ● pihole-FTL.service - Pi-hole FTL
-     Loaded: loaded (/etc/systemd/system/pihole-FTL.service; enabled)
      Active: active (running) since ...
-
-What it checks:
-  - Pi-hole FTL service is running and enabled
-  - No errors in service startup
 
 ───────────────────────────────────────────────────────────────────
 Command:
@@ -180,12 +159,6 @@ Expected Output:
   udp   UNCONN 0   0   0.0.0.0:53   0.0.0.0:*   users:(("pihole-FTL",pid=...))
   tcp   LISTEN 0   32  0.0.0.0:53   0.0.0.0:*   users:(("pihole-FTL",pid=...))
 
-What it checks:
-  - Pi-hole is listening on port 53 (standard DNS port)
-  - Available on all network interfaces
-
-───────────────────────────────────────────────────────────────────
-
 STEP 3: Verify Pi-hole v6 Configuration (CRITICAL)
 ───────────────────────────────────────────────────────────────────
 Command:
@@ -193,18 +166,12 @@ Command:
 
 Expected Output:
   [dns]
-  upstreams = ["127.0.0.1#<UNBOUND_PORT>"]
-
-What it checks:
-  - Pi-hole v6 is configured to use Unbound as DNS upstream
-  - /etc/pihole/pihole.toml is the authoritative config file
-  - Upstream is set to localhost:<UNBOUND_PORT> (Unbound)
+  upstreams = ["127.0.0.1#${UNBOUND_PORT}"]
 
 IMPORTANT:
   In Pi-hole v6, /etc/pihole/pihole.toml is AUTHORITATIVE.
-  The legacy setupVars.conf may exist but is NOT the primary config.
   If upstreams is missing or points elsewhere, Pi-hole will use
-  public DNS resolvers (Google, Cloudflare, etc.) instead of Unbound.
+  public DNS resolvers instead of Unbound.
 
 ───────────────────────────────────────────────────────────────────
 Command:
@@ -212,48 +179,24 @@ Command:
 
 Expected Output:
   93.184.215.14
-  (or similar IP address)
-
-What it checks:
-  - Pi-hole can resolve queries through Unbound
-  - End-to-end DNS resolution chain works:
-    Client → Pi-hole:53 → Unbound:<UNBOUND_PORT> → DoT Upstream
-
-───────────────────────────────────────────────────────────────────
 
 STEP 4: Advanced Verification (Optional)
 ───────────────────────────────────────────────────────────────────
-Command:
-  sudo tcpdump -i lo port <UNBOUND_PORT> -c 10
+Command (terminal 1):
+  sudo tcpdump -i lo port ${UNBOUND_PORT} -c 10
 
-Run in one terminal, then in another:
+Command (terminal 2):
   dig test.com @127.0.0.1
 
-Expected Output:
-  You should see DNS packets between Pi-hole and Unbound on port <UNBOUND_PORT>
-
-What it checks:
-  - Hard proof that Pi-hole is actually querying Unbound
-  - Traffic flow visualization
-
-Note: Requires tcpdump package. Install with:
-  sudo apt-get install tcpdump
-
-───────────────────────────────────────────────────────────────────
+Note: Requires tcpdump: sudo apt-get install tcpdump
 
 STEP 5: Verify Optional Services
 ───────────────────────────────────────────────────────────────────
 If Docker is installed:
   docker ps
 
-Expected Output:
-  CONTAINER ID   IMAGE                    STATUS
-  abc123def456   jokobsk/netalertx:latest Up X minutes
-
 If NetAlertX/Pi.Alert is running:
   Visit: http://[your-ip]:20211
-
-───────────────────────────────────────────────────────────────────
 
 INTERPRETATION OF RESULTS:
 ───────────────────────────────────────────────────────────────────
@@ -262,24 +205,23 @@ INTERPRETATION OF RESULTS:
 ✗ FAIL: Critical problem, immediate action required
 
 Common Issues:
-  - Port 53 in use: systemd-resolved conflict
-    Fix: sudo systemctl disable --now systemd-resolved
+  - Port 53 in use: sudo systemctl disable --now systemd-resolved
   - Unbound not resolving: Check /var/log/unbound/unbound.log
-  - Pi-hole v6 wrong upstream: Run installer with --force flag
+  - Pi-hole v6 wrong upstream: sudo ./install.sh --force
 
 EOF
 }
 
 print_header() {
-  echo "────────────────────────────────────────────────────────────────"
-  echo "POST-INSTALL CHECK — Pi-hole v6 / Unbound / Docker / Pi.Alert"
-  echo "Script: ${SCRIPT_NAME} v${VERSION} (output language: English)"
-  echo "────────────────────────────────────────────────────────────────"
+  printf '%.0s─' {1..64}; printf '\n'
+  printf 'POST-INSTALL CHECK — Pi-hole v6 / Unbound / Docker / Pi.Alert\n'
+  printf 'Script: %s v%s (output language: English)\n' "$SCRIPT_NAME" "$VERSION"
+  printf '%.0s─' {1..64}; printf '\n'
 }
 
 show_version() {
-  echo "${SCRIPT_NAME} v${VERSION}"
-  echo "Output language: English"
+  printf '%s v%s\n' "$SCRIPT_NAME" "$VERSION"
+  printf 'Output language: English\n'
 }
 
 # =============================================
@@ -289,7 +231,7 @@ check_system_info() {
   section "System Information"
 
   if command -v lsb_release &>/dev/null; then
-    info "OS: $(lsb_release -ds 2>/dev/null || echo 'Unknown')"
+    info "OS: $(lsb_release -ds 2>/dev/null || printf 'Unknown')"
   elif [[ -f /etc/os-release ]]; then
     info "OS: $(grep PRETTY_NAME /etc/os-release | cut -d= -f2 | tr -d '"')"
   fi
@@ -298,12 +240,12 @@ check_system_info() {
   info "Kernel: $(uname -r)"
 
   local ipv4
-  ipv4=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "N/A")
+  ipv4=$(hostname -I 2>/dev/null | awk '{print $1}' || printf "N/A")
   info "IPv4: $ipv4"
 
   if command -v ip &>/dev/null; then
     local default_route
-    default_route=$(ip route | grep default | awk '{print $3}' | head -n1 || echo "N/A")
+    default_route=$(ip route | grep default | awk '{print $3}' | head -n1 || printf "N/A")
     info "Default Gateway: $default_route"
   fi
 }
@@ -311,7 +253,6 @@ check_system_info() {
 check_unbound() {
   section "Unbound DNS Service"
 
-  # Service status
   if systemctl is-active --quiet unbound 2>/dev/null; then
     pass "Unbound service is running"
   else
@@ -319,9 +260,9 @@ check_unbound() {
     return
   fi
 
-  # Port check (use detected port)
   local unbound_port="${UNBOUND_PORT:-5335}"
   info "Using Unbound port: $unbound_port"
+
   if command -v ss &>/dev/null; then
     if ss -tuln | grep -q "127.0.0.1:${unbound_port}"; then
       pass "Unbound listening on 127.0.0.1:${unbound_port}"
@@ -338,9 +279,8 @@ check_unbound() {
     warn "Cannot verify port (ss/netstat not available)"
   fi
 
-  # DNS resolution test
   if command -v dig &>/dev/null; then
-    if dig +short @127.0.0.1 -p ${unbound_port} cloudflare.com +time=1 +tries=1 2>/dev/null | grep -qE '^[0-9.]+$'; then
+    if dig +short @127.0.0.1 -p "${unbound_port}" cloudflare.com +time=1 +tries=1 2>/dev/null | grep -qE '^[0-9.]+$'; then
       pass "Unbound resolves cloudflare.com"
     else
       fail "Unbound cannot resolve cloudflare.com"
@@ -353,10 +293,9 @@ check_unbound() {
 check_pihole() {
   section "Pi-hole DNS Service"
 
-  # Version check
   if command -v pihole &>/dev/null; then
     local version
-    version=$(pihole -v 2>/dev/null | grep "Pi-hole version is" | awk '{print $NF}' || echo "unknown")
+    version=$(pihole -v 2>/dev/null | grep "Pi-hole version is" | awk '{print $NF}' || printf "unknown")
     info "Pi-hole version: $version"
     if [[ "$version" =~ v([0-9]+)\. ]]; then
       local major="${BASH_REMATCH[1]}"
@@ -370,7 +309,6 @@ check_pihole() {
     fi
   fi
 
-  # Service status
   if systemctl is-active --quiet pihole-FTL 2>/dev/null; then
     pass "Pi-hole FTL service is running"
   else
@@ -378,7 +316,6 @@ check_pihole() {
     return
   fi
 
-  # Port check
   if command -v ss &>/dev/null; then
     if ss -tuln | grep -qE ':53[[:space:]]'; then
       pass "Pi-hole listening on port 53"
@@ -395,7 +332,6 @@ check_pihole() {
     warn "Cannot verify port (ss/netstat not available)"
   fi
 
-  # DNS resolution test
   if command -v dig &>/dev/null; then
     if dig +short @127.0.0.1 example.org +time=1 +tries=1 2>/dev/null | grep -qE '^[0-9.]+$'; then
       pass "Pi-hole resolves example.org"
@@ -419,7 +355,6 @@ check_pihole_v6_config() {
 
   pass "Pi-hole v6 config file exists: $toml_file"
 
-  # Parse upstreams from [dns] section
   local upstreams
   if sudo test -r "$toml_file" 2>/dev/null; then
     upstreams=$(sudo awk '
@@ -440,7 +375,7 @@ check_pihole_v6_config() {
         found=1
       }
       END { if (!found) print "NOT_FOUND" }
-    ' "$toml_file" 2>/dev/null || echo "NOT_FOUND")
+    ' "$toml_file" 2>/dev/null || printf "NOT_FOUND")
   fi
 
   if [[ "$upstreams" == "NOT_FOUND" || -z "$upstreams" ]]; then
@@ -448,7 +383,7 @@ check_pihole_v6_config() {
     warn "Pi-hole will use public DNS resolvers instead of Unbound!"
   else
     local expected_port="${UNBOUND_PORT:-5335}"
-    if echo "$upstreams" | grep -q "127.0.0.1#${expected_port}"; then
+    if printf '%s' "$upstreams" | grep -q "127.0.0.1#${expected_port}"; then
       pass "Pi-hole v6 upstreams configured correctly: $upstreams"
     else
       warn "Pi-hole v6 upstreams found but NOT pointing to Unbound port ${expected_port}: $upstreams"
@@ -477,12 +412,11 @@ check_docker() {
     warn "Docker daemon is not accessible (may need sudo)"
   fi
 
-  # List containers
   local containers
   if sudo test -x /usr/bin/docker 2>/dev/null; then
-    containers=$(sudo docker ps --format "{{.Names}}" 2>/dev/null || echo "")
+    containers=$(sudo docker ps --format "{{.Names}}" 2>/dev/null || printf "")
   else
-    containers=$(docker ps --format "{{.Names}}" 2>/dev/null || echo "")
+    containers=$(docker ps --format "{{.Names}}" 2>/dev/null || printf "")
   fi
 
   if [[ -n "$containers" ]]; then
@@ -498,13 +432,12 @@ check_netalertx() {
   local found=false
   local port=""
 
-  # Check for NetAlertX container
   if [[ -d /opt/netalertx/data ]]; then
     pass "NetAlertX data dir present: /opt/netalertx/data"
   fi
   if [[ -d /opt/netalertx/config || -d /opt/netalertx/db ]]; then
     if ui_dir_not_empty "/opt/netalertx/config" || ui_dir_not_empty "/opt/netalertx/db"; then
-      warn "Legacy NetAlertX dirs detected (/opt/netalertx/config,/opt/netalertx/db). New mount uses /opt/netalertx/data -> /data; migrate if needed."
+      warn "Legacy NetAlertX dirs detected. New mount uses /opt/netalertx/data -> /data; migrate if needed."
     fi
   fi
 
@@ -513,9 +446,9 @@ check_netalertx() {
       pass "NetAlertX container is running"
       found=true
 
-      # Host networking is recommended for reliable device discovery.
       local network_mode=""
-      network_mode=$(sudo docker inspect -f '{{.HostConfig.NetworkMode}}' netalertx 2>/dev/null || docker inspect -f '{{.HostConfig.NetworkMode}}' netalertx 2>/dev/null || echo "")
+      network_mode=$(sudo docker inspect -f '{{.HostConfig.NetworkMode}}' netalertx 2>/dev/null || \
+        docker inspect -f '{{.HostConfig.NetworkMode}}' netalertx 2>/dev/null || printf "")
 
       if [[ "$network_mode" == "host" ]]; then
         pass "NetAlertX container network mode: host"
@@ -526,17 +459,16 @@ check_netalertx() {
         else
           warn "Could not determine NetAlertX container network mode"
         fi
-
-        # Try to get port mapping (bridge mode)
-        port=$(sudo docker ps --filter name=netalertx --format "{{.Ports}}" 2>/dev/null | grep -oP '\d+(?=->20211)' | head -n1 || echo "")
+        port=$(sudo docker ps --filter name=netalertx --format "{{.Ports}}" 2>/dev/null | \
+          grep -oP '\d+(?=->20211)' | head -n1 || printf "")
         if [[ -z "$port" ]]; then
-          port=$(docker ps --filter name=netalertx --format "{{.Ports}}" 2>/dev/null | grep -oP '\d+(?=->20211)' | head -n1 || echo "")
+          port=$(docker ps --filter name=netalertx --format "{{.Ports}}" 2>/dev/null | \
+            grep -oP '\d+(?=->20211)' | head -n1 || printf "")
         fi
       fi
     fi
   fi
 
-  # Check for Pi.Alert systemd service
   if systemctl list-units --type=service --all 2>/dev/null | grep -qiE 'pi.?alert'; then
     if systemctl is-active --quiet pialert 2>/dev/null || systemctl is-active --quiet pi-alert 2>/dev/null; then
       pass "Pi.Alert service is running"
@@ -554,20 +486,18 @@ check_netalertx() {
 check_network_info() {
   section "Network Configuration"
 
-  # DNS configuration
   if [[ -f /etc/resolv.conf ]]; then
     local nameservers
     nameservers=$(grep -E '^nameserver' /etc/resolv.conf | awk '{print $2}' | tr '\n' ' ')
     info "System nameservers: $nameservers"
 
-    if echo "$nameservers" | grep -q "127.0.0.1"; then
+    if printf '%s' "$nameservers" | grep -q "127.0.0.1"; then
       pass "System using local DNS (127.0.0.1)"
     else
       warn "System NOT using local DNS"
     fi
   fi
 
-  # Check for systemd-resolved conflict
   if systemctl is-active --quiet systemd-resolved 2>/dev/null; then
     warn "systemd-resolved is running (may conflict with Pi-hole on port 53)"
   fi
@@ -577,31 +507,34 @@ get_service_urls() {
   section "Service URLs"
 
   local ipv4
-  ipv4=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
+  ipv4=$(hostname -I 2>/dev/null | awk '{print $1}' || printf "127.0.0.1")
 
-  echo ""
-  echo "┌─────────────────────────────────────────────────────────────────┐"
-  echo "│                         Service URLs                            │"
-  echo "├─────────────────────────────────────────────────────────────────┤"
+  printf '\n'
+  printf '┌─────────────────────────────────────────────────────────────────┐\n'
+  printf '│                         Service URLs                            │\n'
+  printf '├─────────────────────────────────────────────────────────────────┤\n'
 
-  # Pi-hole
   if systemctl is-active --quiet pihole-FTL 2>/dev/null; then
     printf "│ %-63s │\n" "Pi-hole Admin:   http://${ipv4}/admin"
   fi
 
-  # NetAlertX
   if command -v docker &>/dev/null; then
     local netalertx_port=""
     local network_mode=""
 
-    if sudo docker ps --filter name=netalertx --format "{{.Names}}" 2>/dev/null | grep -q '^netalertx$' ||        docker ps --filter name=netalertx --format "{{.Names}}" 2>/dev/null | grep -q '^netalertx$'; then
+    if sudo docker ps --filter name=netalertx --format "{{.Names}}" 2>/dev/null | grep -q '^netalertx$' || \
+       docker ps --filter name=netalertx --format "{{.Names}}" 2>/dev/null | grep -q '^netalertx$'; then
 
-      network_mode=$(sudo docker inspect -f '{{.HostConfig.NetworkMode}}' netalertx 2>/dev/null || docker inspect -f '{{.HostConfig.NetworkMode}}' netalertx 2>/dev/null || echo "")
+      network_mode=$(sudo docker inspect -f '{{.HostConfig.NetworkMode}}' netalertx 2>/dev/null || \
+        docker inspect -f '{{.HostConfig.NetworkMode}}' netalertx 2>/dev/null || printf "")
 
       if [[ "$network_mode" == "host" ]]; then
         netalertx_port="20211"
       else
-        netalertx_port=$(sudo docker ps --filter name=netalertx --format "{{.Ports}}" 2>/dev/null | grep -oP '\d+(?=->20211)' | head -n1 ||                          docker ps --filter name=netalertx --format "{{.Ports}}" 2>/dev/null | grep -oP '\d+(?=->20211)' | head -n1 || echo "")
+        netalertx_port=$(sudo docker ps --filter name=netalertx --format "{{.Ports}}" 2>/dev/null | \
+          grep -oP '\d+(?=->20211)' | head -n1 || \
+          docker ps --filter name=netalertx --format "{{.Ports}}" 2>/dev/null | \
+          grep -oP '\d+(?=->20211)' | head -n1 || printf "")
       fi
 
       if [[ -n "$netalertx_port" ]]; then
@@ -610,63 +543,65 @@ get_service_urls() {
     fi
   fi
 
-  # Python Suite (optional)
   if systemctl is-active --quiet pihole-suite 2>/dev/null; then
     printf "│ %-63s │\n" "Python Suite API: http://127.0.0.1:8090"
   fi
 
-  echo "└─────────────────────────────────────────────────────────────────┘"
-  echo ""
+  printf '└─────────────────────────────────────────────────────────────────┘\n'
+  printf '\n'
 }
 
 show_service_status() {
   section "Service Status Summary"
 
-  echo ""
+  printf '\n'
   printf "%-20s %s\n" "Service" "Status"
   printf "%-20s %s\n" "-------" "------"
 
-  # Unbound
+  local active_label="${UI_GREEN}ACTIVE${UI_RESET}"
+  local inactive_label="${UI_RED}INACTIVE${UI_RESET}"
+  local optional_label="${UI_YELLOW}INACTIVE/NOT INSTALLED${UI_RESET}"
+  local running_label="${UI_GREEN}RUNNING${UI_RESET}"
+  local skipped_label="${UI_YELLOW}NOT RUNNING/SKIPPED${UI_RESET}"
+
   if systemctl is-active --quiet unbound 2>/dev/null; then
-    printf "%-20s ${GREEN}%s${NC}\n" "Unbound" "ACTIVE"
+    printf "%-20s %b\n" "Unbound" "$active_label"
   else
-    printf "%-20s ${RED}%s${NC}\n" "Unbound" "INACTIVE"
+    printf "%-20s %b\n" "Unbound" "$inactive_label"
   fi
 
-  # Pi-hole FTL
   if systemctl is-active --quiet pihole-FTL 2>/dev/null; then
-    printf "%-20s ${GREEN}%s${NC}\n" "Pi-hole FTL" "ACTIVE"
+    printf "%-20s %b\n" "Pi-hole FTL" "$active_label"
   else
-    printf "%-20s ${RED}%s${NC}\n" "Pi-hole FTL" "INACTIVE"
+    printf "%-20s %b\n" "Pi-hole FTL" "$inactive_label"
   fi
 
-  # Docker
   if systemctl is-active --quiet docker 2>/dev/null; then
-    printf "%-20s ${GREEN}%s${NC}\n" "Docker" "ACTIVE"
+    printf "%-20s %b\n" "Docker" "$active_label"
   else
-    printf "%-20s ${YELLOW}%s${NC}\n" "Docker" "INACTIVE/NOT INSTALLED"
+    printf "%-20s %b\n" "Docker" "$optional_label"
   fi
 
-  # NetAlertX container
-  if command -v docker &>/dev/null && (sudo docker ps 2>/dev/null | grep -q netalertx || docker ps 2>/dev/null | grep -q netalertx); then
-    printf "%-20s ${GREEN}%s${NC}\n" "NetAlertX" "RUNNING"
+  if command -v docker &>/dev/null && \
+     (sudo docker ps 2>/dev/null | grep -q netalertx || docker ps 2>/dev/null | grep -q netalertx); then
+    printf "%-20s %b\n" "NetAlertX" "$running_label"
   else
-    printf "%-20s ${YELLOW}%s${NC}\n" "NetAlertX" "NOT RUNNING/SKIPPED"
+    printf "%-20s %b\n" "NetAlertX" "$skipped_label"
   fi
 
-  echo ""
+  printf '\n'
 }
 
 print_summary() {
-  echo ""
-  echo "┌─────────────────────────────────────────────────────────────────┐"
-  echo "│                         Check Summary                           │"
-  echo "├─────────────────────────────────────────────────────────────────┤"
-  printf "│ ${GREEN}PASS:${NC} %-57s│\n" "$PASS_COUNT"
-  printf "│ ${YELLOW}WARN:${NC} %-57s│\n" "$WARN_COUNT"
-  printf "│ ${RED}FAIL:${NC} %-57s│\n" "$FAIL_COUNT"
-  echo "└─────────────────────────────────────────────────────────────────┘"
-  echo ""
+  printf '\n'
+  printf '┌─────────────────────────────────────────────────────────────────┐\n'
+  printf '│                         Check Summary                           │\n'
+  printf '├─────────────────────────────────────────────────────────────────┤\n'
+  printf "│ %bPASS:%b %-57s│\n" "$UI_GREEN" "$UI_RESET" "$PASS_COUNT"
+  printf "│ %bWARN:%b %-57s│\n" "$UI_YELLOW" "$UI_RESET" "$WARN_COUNT"
+  printf "│ %bFAIL:%b %-57s│\n" "$UI_RED" "$UI_RESET" "$FAIL_COUNT"
+  printf '└─────────────────────────────────────────────────────────────────┘\n'
+  printf '\n'
 
   if [[ $FAIL_COUNT -gt 0 ]]; then
     printf '%sSome checks failed. Please review the output above.%s\n' "$UI_RED" "$UI_RESET"
@@ -683,12 +618,10 @@ print_summary() {
 quick_check() {
   print_header
   info "Running Quick Check..."
-  echo ""
+  printf '\n'
 
-  # Reset counters
   PASS_COUNT=0 WARN_COUNT=0 FAIL_COUNT=0
 
-  # Quick checks
   if systemctl is-active --quiet unbound 2>/dev/null; then
     pass "Unbound is running"
   else
@@ -701,10 +634,10 @@ quick_check() {
     fail "Pi-hole FTL is NOT running"
   fi
 
-  # Quick Pi-hole v6 config check (use detected port)
   local expected_port="${UNBOUND_PORT:-5335}"
   if [[ -f /etc/pihole/pihole.toml ]]; then
-    if sudo grep -q "127.0.0.1#${expected_port}" /etc/pihole/pihole.toml 2>/dev/null || grep -q "127.0.0.1#${expected_port}" /etc/pihole/pihole.toml 2>/dev/null; then
+    if sudo grep -q "127.0.0.1#${expected_port}" /etc/pihole/pihole.toml 2>/dev/null || \
+       grep -q "127.0.0.1#${expected_port}" /etc/pihole/pihole.toml 2>/dev/null; then
       pass "Pi-hole v6 upstreams configured (port ${expected_port})"
     else
       fail "Pi-hole v6 upstreams NOT configured for port ${expected_port}"
@@ -720,7 +653,6 @@ full_check() {
   print_header
   info "Running Full Check..."
 
-  # Reset counters
   PASS_COUNT=0 WARN_COUNT=0 FAIL_COUNT=0
 
   check_system_info
@@ -736,20 +668,20 @@ full_check() {
 
 show_menu() {
   while true; do
-    echo ""
-    echo "${SCRIPT_NAME} v${VERSION} (output language: English)"
-    echo "┌─────────────────────────────────────────────────────────────────┐"
-    echo "│         Pi-hole + Unbound Post-Install Check v${VERSION}           │"
-    echo "├─────────────────────────────────────────────────────────────────┤"
-    echo "│ [1] Quick Check (summary only)                                  │"
-    echo "│ [2] Full Check (all sections)                                   │"
-    echo "│ [3] Show Service URLs                                           │"
-    echo "│ [4] Service Status                                              │"
-    echo "│ [5] Network Info                                                │"
-    echo "│ [6] Exit                                                        │"
-    echo "└─────────────────────────────────────────────────────────────────┘"
-    echo ""
-    read -rp "Select option [1-6]: " choice
+    printf '\n'
+    printf '%s v%s (output language: English)\n' "$SCRIPT_NAME" "$VERSION"
+    printf '┌─────────────────────────────────────────────────────────────────┐\n'
+    printf '│         Pi-hole + Unbound Post-Install Check v%s           │\n' "$VERSION"
+    printf '├─────────────────────────────────────────────────────────────────┤\n'
+    printf '│ [1] Quick Check (summary only)                                  │\n'
+    printf '│ [2] Full Check (all sections)                                   │\n'
+    printf '│ [3] Show Service URLs                                           │\n'
+    printf '│ [4] Service Status                                              │\n'
+    printf '│ [5] Network Info                                                │\n'
+    printf '│ [6] Exit                                                        │\n'
+    printf '└─────────────────────────────────────────────────────────────────┘\n'
+    printf '\n'
+    IFS= read -rp "Select option [1-6]: " choice
 
     case $choice in
       1) quick_check ;;
@@ -757,7 +689,7 @@ show_menu() {
       3) get_service_urls ;;
       4) show_service_status ;;
       5) check_network_info ;;
-      6) echo "Exiting."; exit 0 ;;
+      6) printf 'Exiting.\n'; exit 0 ;;
       *) printf '%sInvalid option. Please select 1-6.%s\n' "$UI_RED" "$UI_RESET" ;;
     esac
   done
@@ -802,7 +734,6 @@ EOF
 # MAIN
 # =============================================
 main() {
-  # Check for non-interactive flags
   case "${1:-}" in
     --version)
       show_version
@@ -819,11 +750,11 @@ main() {
       exit $?
       ;;
     --urls)
+      detect_unbound_port
       get_service_urls
       exit 0
       ;;
     --steps)
-      # Don't detect port for --steps (just show placeholders)
       show_manual_steps
       exit 0
       ;;
@@ -832,8 +763,6 @@ main() {
       exit 0
       ;;
     "")
-      # Interactive mode (only if stdin is a TTY). If not, default to a
-      # non-blocking quick check so automation/SSH pipes don't hang.
       if [[ -t 0 ]]; then
         detect_unbound_port
         show_menu
