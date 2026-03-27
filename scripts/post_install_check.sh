@@ -75,17 +75,17 @@ detect_unbound_port() {
 # =============================================
 pass() {
   ui_pass "$*"
-  ((PASS_COUNT++))
+  ((PASS_COUNT+=1))
 }
 
 warn() {
   ui_warn "$*"
-  ((WARN_COUNT++))
+  ((WARN_COUNT+=1))
 }
 
 fail() {
   ui_fail "$*"
-  ((FAIL_COUNT++))
+  ((FAIL_COUNT+=1))
 }
 
 info() {
@@ -295,7 +295,7 @@ check_pihole() {
 
   if command -v pihole &>/dev/null; then
     local version
-    version=$(pihole -v 2>/dev/null | grep "Pi-hole version is" | awk '{print $NF}' || printf "unknown")
+    version=$(pihole -v 2>/dev/null | grep -E "^(Pi-hole|Core) version is" | head -n1 | awk '{print $NF}' || printf "unknown")
     info "Pi-hole version: $version"
     if [[ "$version" =~ v([0-9]+)\. ]]; then
       local major="${BASH_REMATCH[1]}"
@@ -383,7 +383,7 @@ check_pihole_v6_config() {
     warn "Pi-hole will use public DNS resolvers instead of Unbound!"
   else
     local expected_port="${UNBOUND_PORT:-5335}"
-    if printf '%s' "$upstreams" | grep -q "127.0.0.1#${expected_port}"; then
+    if grep -q "127.0.0.1#${expected_port}" "$toml_file"; then
       pass "Pi-hole v6 upstreams configured correctly: $upstreams"
     else
       warn "Pi-hole v6 upstreams found but NOT pointing to Unbound port ${expected_port}: $upstreams"
