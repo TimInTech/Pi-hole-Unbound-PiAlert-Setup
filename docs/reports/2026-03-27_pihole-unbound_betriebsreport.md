@@ -229,3 +229,5 @@ Prüfungen:
 - Verifikation 2026-03-27 18:17:19 CET: bash -n scripts/post_install_check.sh OK, --quick/--full jeweils Exit 0, pihole-FTL/unbound active, systemctl --failed zeigt ausschließlich NetworkManager-wait-online.
 - Zwischenstand 2026-03-27 18:35:58 CET: Fortsetzung der Git-/Report-Finalisierung gestartet.
 - Zwischenstand 2026-03-27 18:36:31 CET: Finaler Git-Abgleich durchgeführt; main ist lokal ahead 2 ggü. origin/main und push wird ausgeführt.
+- Zwischenstand 2026-03-27 18:53:08 CET: gh-Login bestätigt gestartet; finaler GitHub-Abgleich und Push der offenen Repo-Änderungen wird durchgeführt.
+- Status 2026-03-27 18:53:33 CET: GitHub-Login aktiv als TimInTech; main ist lokal vor origin/main und wird jetzt mit allen offenen Commits gepusht.
