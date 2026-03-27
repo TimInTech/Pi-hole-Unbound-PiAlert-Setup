@@ -227,3 +227,5 @@ Prüfungen:
 - Änderung 2026-03-27 18:14:49 CET: Git-Identität repo-lokal auf TimInTech/gummiflip@outlook.de gesetzt; Fix-Branch und Commit a7601b4 verifiziert.
 - Änderung 2026-03-27 18:16:51 CET: Report-Reststatus bereinigt: pihole_exporter und Pi.Alert/NetAlertX als kein aktiver Fehler gekennzeichnet; verbleibender technischer Restpunkt bleibt NetworkManager-wait-online.
 - Verifikation 2026-03-27 18:17:19 CET: bash -n scripts/post_install_check.sh OK, --quick/--full jeweils Exit 0, pihole-FTL/unbound active, systemctl --failed zeigt ausschließlich NetworkManager-wait-online.
+- Zwischenstand 2026-03-27 18:35:58 CET: Fortsetzung der Git-/Report-Finalisierung gestartet.
+- Zwischenstand 2026-03-27 18:36:31 CET: Finaler Git-Abgleich durchgeführt; main ist lokal ahead 2 ggü. origin/main und push wird ausgeführt.
