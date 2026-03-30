@@ -208,6 +208,28 @@ action_view_logs() {
   esac
 }
 
+
+action_rescue_menu() {
+  local rescue_cmd=""
+  if [[ -x "/usr/local/bin/pihole-rescue" ]]; then
+    rescue_cmd="/usr/local/bin/pihole-rescue"
+  elif [[ -f "$SCRIPT_DIR/rescue_menu.sh" ]]; then
+    rescue_cmd="$SCRIPT_DIR/rescue_menu.sh"
+  fi
+
+  if [[ -z "$rescue_cmd" ]]; then
+    header
+    printf '%sRescue-Menue nicht gefunden.%s\n' "$UI_RED" "$UI_RESET"
+    printf 'Erwartet unter: /usr/local/bin/pihole-rescue\n'
+    printf 'Oder unter:     %s/rescue_menu.sh\n' "$SCRIPT_DIR"
+    pause
+    return 1
+  fi
+
+  sudo "$rescue_cmd"
+  # Nach Rueckkehr aus dem Rescue-Menue: zurueck ins Console-Menue
+}
+
 action_check_mode() {
   # Non-interactive mode for validation
   local all_ok=true
@@ -229,6 +251,12 @@ action_check_mode() {
     log_warn "pihole_maintenance_pro.sh not found (optional)"
   else
     log_ok "pihole_maintenance_pro.sh found"
+  fi
+
+  if [[ ! -x "/usr/local/bin/pihole-rescue" ]] && [[ ! -f "$SCRIPT_DIR/rescue_menu.sh" ]]; then
+    log_warn "rescue_menu.sh / pihole-rescue not found (optional)"
+  else
+    log_ok "rescue_menu found"
   fi
 
   # Check if menu can start
@@ -254,14 +282,15 @@ show_dialog_menu() {
   while true; do
     local choice
     choice=$(dialog --clear --title "Pi-hole Suite Management" \
-      --menu "Select an option:" 15 65 7 \
+      --menu "Select an option:" 16 65 8 \
       1 "Quick Check (summary)" \
       2 "Full Check (comprehensive, requires sudo)" \
       3 "Show Service URLs" \
       4 "Manual Steps Guide" \
       5 "Maintenance Pro (SAFE mode)" \
       6 "View Logs" \
-      7 "Exit" \
+      7 "Rescue & Backup Menu" \
+      8 "Exit" \
       2>&1 >/dev/tty) || return 0
 
     clear
@@ -272,7 +301,8 @@ show_dialog_menu() {
       4) action_manual_steps ;;
       5) action_maintenance_pro ;;
       6) action_view_logs ;;
-      7) clear; exit 0 ;;
+      7) action_rescue_menu ;;
+      8) clear; exit 0 ;;
     esac
   done
 }
@@ -290,8 +320,12 @@ show_text_menu() {
     printf '%s\n' "  [4] Manual Steps Guide"
     printf '%s\n' "  [5] Maintenance Pro (SAFE mode) - requires sudo"
     printf '%s\n' "  [6] View Logs"
-    printf '%s\n\n' "  [7] Exit"
-    IFS= read -rp "Choice [1-7]: " choice
+    printf '%s
+' "  [7] Rescue & Backup Menu"
+    printf '%s
+
+' "  [8] Exit"
+    IFS= read -rp "Choice [1-8]: " choice
 
     case $choice in
       1) action_quick_check ;;
@@ -300,10 +334,11 @@ show_text_menu() {
       4) action_manual_steps ;;
       5) action_maintenance_pro ;;
       6) action_view_logs ;;
-      7) clear; printf '%s\n' "Goodbye!"; exit 0 ;;
+      7) action_rescue_menu ;;
+      8) clear; printf '%s\n' "Goodbye!"; exit 0 ;;
       "") continue ;;
       *)
-        printf '%sInvalid choice. Please select 1-7.%s\n' "$UI_RED" "$UI_RESET"
+        printf '%sInvalid choice. Please select 1-8.%s\n' "$UI_RED" "$UI_RESET"
         sleep 1
         ;;
     esac
@@ -327,18 +362,24 @@ Interactive management console for Pi-hole + Unbound suite.
 
 OPTIONS:
   --check       Run non-interactive check mode
+  --text        Force text-based menu (bypass dialog)
   -h, --help    Show this help message
 
 INTERACTIVE MODE:
   Run without arguments to start the interactive menu.
+  Option 7 opens the Rescue & Backup sub-menu (requires sudo).
 
 NOTE:
   If 'dialog' is installed, a graphical menu will be used.
   Otherwise, a text-based menu will be shown.
   Install dialog: sudo apt-get install -y dialog
+  Force text mode:  $(basename "$0") --text
 
 EOF
       exit 0
+      ;;
+    --text)
+      show_text_menu
       ;;
     "")
       # Try dialog menu first, fall back to text

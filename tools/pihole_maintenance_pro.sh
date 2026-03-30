@@ -187,14 +187,14 @@ run_step() {
 
   if [[ "$display_only" == "true" ]]; then
     if bash -lc "$cmd" 2>&1 | tee -a "$out" | strip_ansi > "$step_log"; then
-      printf '%s Erfolg\n' "$CHECK"
+      log_ok "Step $n: $title"
       STATUS["$n"]="${GREEN}✔ OK${NC}"
       [[ -f "$step_log" ]] && extract_step_data "$n" "$(cat "$step_log")"
     else
-      printf '%s Warnung\n' "$WARN"
+      log_warn "Step $n: $title"
       STATUS["$n"]="${YELLOW}⚠ WARN${NC}"
       [[ -s "$step_log" ]] && tail -n 20 "$step_log"
-      [[ "$critical" == "true" ]] && printf '%s[ERROR] Kritischer Fehler – Abbruch%s\n' "$RED" "$NC" && exit 1
+      [[ "$critical" == "true" ]] && log_err "Kritischer Fehler in Step $n – Abbruch" && exit 1
     fi
     return 0
   fi
@@ -214,15 +214,17 @@ run_step() {
     printf '\r' > "$out" 2> /dev/null || true
   ) &
   if wait "$pid"; then
-    printf '\n%s Erfolg\n' "$CHECK"
+    printf '\n'
+    log_ok "Step $n: $title"
     STATUS["$n"]="${GREEN}✔ OK${NC}"
     [[ -f "$step_log" ]] && extract_step_data "$n" "$(cat "$step_log")"
   else
     local ec=$?
-    printf '\n%s Fehler (Code: %s)\n' "$FAIL" "$ec"
+    printf '\n'
+    log_err "Step $n: $title (Code: $ec)"
     STATUS["$n"]="${RED}✖ FAIL${NC}"
     [[ -f "$step_log" ]] && tail -n 50 "$step_log"
-    [[ "$critical" == "true" ]] && printf '%s[ERROR] Kritischer Fehler in Step %s%s\n' "$RED" "$n" "$NC" && exit $ec
+    [[ "$critical" == "true" ]] && log_err "Kritischer Fehler in Step $n: $title" && exit $ec
   fi
 }
 

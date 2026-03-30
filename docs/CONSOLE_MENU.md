@@ -1,248 +1,184 @@
-# Console Menu User Guide
+# Pi-hole Suite — Menu System Guide
+
+> **Quick reference:** `sudo pihole-rescue` for recovery operations, `bash scripts/console_menu.sh` for general management.
+
+---
 
 ## Overview
 
-The console menu provides an interactive interface for managing your Pi-hole + Unbound + Pi.Alert installation. It offers convenient access to verification tools, maintenance tasks, and system monitoring.
+The suite ships two interactive menus:
 
-## Screenshots
+| Menu | Command | Purpose |
+|------|---------|---------|
+| **Console Menu** | `bash scripts/console_menu.sh` | General management, checks, maintenance |
+| **Rescue & Backup Menu** | `sudo pihole-rescue` | Recovery, backup/restore, DNS fixes |
 
-![Console menu: Pi-hole Suite Management](assets/Screenshot%202026-01-01%20161018.png)
+Both menus use `scripts/lib/ui.sh` for consistent output formatting.
 
-![View logs: Pi-hole + Unbound Management Suite](assets/Pi-hole%20Unbound%20Management%20Suite.png)
+---
 
-## Quick Start
-
-### Running the Menu
+## Console Menu
 
 ```bash
-./scripts/console_menu.sh
+bash ~/Pi-hole-Unbound-PiAlert-Setup/scripts/console_menu.sh
+# Force text mode (bypass dialog):
+bash ~/Pi-hole-Unbound-PiAlert-Setup/scripts/console_menu.sh --text
+# Non-interactive check:
+bash scripts/console_menu.sh --check
 ```
 
-### With Dialog Support (Recommended)
+![Console Menu](assets/screenshot_console_menu.png)
 
-For a better graphical menu experience, install `dialog`:
+### Options
+
+| # | Option | Details |
+|---|--------|---------|
+| 1 | Post-Install Check (Quick) | Fast health check, no sudo. Checks Unbound, Pi-hole FTL, upstream config |
+| 2 | Post-Install Check (Full) | Comprehensive check, requires sudo. All components + network |
+| 3 | Show Service URLs | Pi-hole admin URL, Suite API URL |
+| 4 | Manual Steps Guide | Step-by-step verification commands with expected output |
+| 5 | Maintenance Pro (SAFE mode) | Requires sudo + confirmation. apt update/upgrade, Pi-hole update, gravity |
+| 6 | View Logs | Maintenance logs, pihole-FTL journal, unbound journal |
+| **7** | **Rescue & Backup Menu** | Opens `pihole-rescue` — full recovery toolkit |
+| 8 | Exit | |
+
+### System-Wide Access
 
 ```bash
-sudo apt-get install -y dialog
+sudo ln -sf ~/Pi-hole-Unbound-PiAlert-Setup/scripts/console_menu.sh /usr/local/bin/pihole-suite
+pihole-suite   # now works from anywhere
 ```
 
-The menu will automatically use dialog if available, otherwise it falls back to a text-based interface.
-
-## Menu Options
-
-### [1] Post-Install Check (Quick)
-- Runs a fast system health check
-- No sudo required
-- Checks: Unbound, Pi-hole FTL, v6 upstream configuration
-- Displays PASS/WARN/FAIL summary
-
-### [2] Post-Install Check (Full)
-- Comprehensive system verification
-- **Requires sudo**
-- Checks all components including Docker containers
-- Shows detailed configuration status
-- Network and DNS settings
-
-### [3] Show Service URLs
-- Displays detected service URLs
-- Pi-hole Admin interface
-- NetAlertX/Pi.Alert dashboard (if running)
-- No sudo required
-
-### [4] Manual Steps Guide
-- Shows step-by-step verification commands
-- Expected output for each command
-- Troubleshooting tips
-- Viewable with `less` if available
-
-### [5] Maintenance Pro (SAFE mode)
-- **Requires sudo and confirmation**
-- System maintenance tasks:
-  - Package updates
-  - Pi-hole component upgrades
-  - Temporary file cleanup
-  - Service restarts
-- Creates detailed logs in `/var/log/`
-- **WARNING:** Modifies system configuration
-
-### [6] View Logs
-- Access to maintenance and system logs
-- Options:
-  - Latest maintenance log
-  - Pi-hole FTL systemd journal
-  - Unbound systemd journal
-- Requires sudo for some log files
-
-### [7] Exit
-- Cleanly exits the menu
-
-## Creating a Convenient Alias
-
-### For Bash
-
-Add to your `~/.bash_aliases` or `~/.bashrc`:
+### Non-Interactive Mode
 
 ```bash
-echo "alias pihole-suite='bash ~/Pi-hole-Unbound-PiAlert-Setup/scripts/console_menu.sh'" >> ~/.bash_aliases
-source ~/.bash_aliases
-```
-
-Then run with:
-```bash
-pihole-suite
-```
-
-### For Zsh
-
-Add to your `~/.zshrc`:
-
-```bash
-echo "alias pihole-suite='bash ~/Pi-hole-Unbound-PiAlert-Setup/scripts/console_menu.sh'" >> ~/.zshrc
-source ~/.zshrc
-```
-
-### System-Wide Alias (All Users)
-
-Create a symlink in `/usr/local/bin` (requires sudo):
-
-```bash
-sudo ln -s ~/Pi-hole-Unbound-PiAlert-Setup/scripts/console_menu.sh /usr/local/bin/pihole-suite
-```
-
-Then any user can run:
-```bash
-pihole-suite
-```
-
-## Non-Interactive Mode
-
-### Check Mode
-
-Verify the menu can start and dependencies are available:
-
-```bash
+# Check mode (validates menu can start):
 ./scripts/console_menu.sh --check
 ```
 
-Output:
+Expected output:
 ```
-[INFO] dialog not installed (optional, fallback to text menu available)
-[PASS] post_install_check.sh found
-[PASS] pihole_maintenance_pro.sh found
-[INFO] Console menu available (text mode)
-[PASS] Console menu check completed
+[HH:MM:SS] INFO dialog not installed (optional, fallback to text menu available)
+[HH:MM:SS] OK   post_install_check.sh found
+[HH:MM:SS] OK   pihole_maintenance_pro.sh found
+[HH:MM:SS] OK   rescue_menu found
+[HH:MM:SS] INFO Console menu available (text mode)
+[HH:MM:SS] OK   Console menu check completed
 ```
 
-### Help
+---
+
+## Rescue & Backup Menu
 
 ```bash
-./scripts/console_menu.sh --help
+sudo pihole-rescue           # global command (symlink in /usr/local/bin)
+# or directly:
+sudo bash scripts/rescue_menu.sh
 ```
 
-## Safety Notes
+![Rescue Menu](assets/screenshot_rescue_menu.png)
 
-### Sudo Usage
+### Options
 
-Some menu options require sudo privileges:
-- **Full Check** - Reads Pi-hole v6 config files
-- **Maintenance Pro** - Modifies system configuration
-- **View Logs** - Accesses system log files
+#### Status & Diagnostics
 
-The menu will:
-1. **Always ask for confirmation** before sudo operations
-2. Display what the operation will do
-3. Allow you to cancel at any time
+| # | Option | What It Does |
+|---|--------|-------------|
+| 1 | System status check | Service status (pihole-FTL, unbound), DNS tests, open ports, RAM, CPU temp |
+| 2 | DNS loop / upstream check | Detects DNS loops, tests blocking, verifies Unbound upstream |
+| 3 | Nightly / diagnostic test | Runs `scripts/nightly_test.sh` (or inline fallback) |
 
-### Maintenance Pro Safety
+![System Status](assets/screenshot_status_check.png)
 
-When running Maintenance Pro:
-- A **backup is created** before modifications
-- Detailed logs are saved to `/var/log/pihole_maintenance_pro_*.log`
-- Operations are **non-destructive** (updates, not removals)
-- Services are restarted gracefully
+![DNS Check](assets/screenshot_dns_check.png)
 
-**To cancel:** Press `Ctrl+C` or answer `N` to confirmation prompts.
+#### Backup & Restore
+
+| # | Option | What It Does |
+|---|--------|-------------|
+| 4 | Create backup now | Backs up `pihole.toml`, `/etc/unbound`, systemd drop-ins to `/home/pi/pihole-rescue-backups/` |
+| 5 | Restore from backup | Shows list of available backups, confirms before restoring, verifies DNS |
+| 6 | Delete old backups | Keeps newest or removes backups older than 14 days |
+
+![Backup](assets/screenshot_backup.png)
+
+**Backup location:** `/home/pi/pihole-rescue-backups/YYYYMMDD_HHMMSS/`
+
+**Contents per backup:**
+- `pihole.toml` — Pi-hole v6 config
+- `unbound/` — all files from `/etc/unbound/unbound.conf.d/`
+- `systemd/` — pihole-FTL and unbound drop-in files
+
+#### Rescue Operations
+
+| # | Option | What It Does |
+|---|--------|-------------|
+| **7** | Last-Known-Good restore | Restores latest backup → sets Unbound upstream → restarts services → verifies DNS |
+| **8** | Emergency DNS bypass | Sets Pi host to 8.8.8.8 / 1.1.1.1 directly. Saves previous config. Fully reversible |
+| **9** | Pi-hole → Unbound standard fix | Sets upstream to `127.0.0.1#5335`, verifies Unbound config, restarts services |
+
+**Option 8 — Emergency DNS Bypass in detail:**
+1. Detects current DNS config
+2. Saves it to a backup file
+3. Sets `/etc/resolv.conf` to 8.8.8.8 / 1.1.1.1
+4. Tests DNS resolution
+5. Tells you how to revert: run option 8 again to toggle back
+
+#### Info & Reports
+
+| # | Option | What It Does |
+|---|--------|-------------|
+| 10 | Router / client DNS hint | FritzBox step-by-step guide + blocking test |
+| 11 | Show last report / log | Views maintenance log, rescue session log, FTL journal |
+
+---
+
+## Shared UI Library (`scripts/lib/ui.sh`)
+
+All scripts use the same log helpers:
+
+```bash
+log_ok   "message"    # [HH:MM:SS] OK   message  (green)
+log_warn "message"    # [HH:MM:SS] WARN message  (yellow, stderr)
+log_err  "message"    # [HH:MM:SS] ERR  message  (red, stderr)
+log_info "message"    # [HH:MM:SS] INFO message  (blue)
+```
+
+Colors are automatically disabled when:
+- Output is not a TTY (`| pipe`, `> redirect`)
+- `NO_COLOR=1` is set
+
+---
+
+## Paths
+
+| Path | Description |
+|------|-------------|
+| `/usr/local/bin/pihole-rescue` | Global symlink → `scripts/rescue_menu.sh` |
+| `/home/pi/pihole-rescue-menu` | User alias |
+| `/home/pi/pihole-rescue-backups/` | Backup storage |
+| `/var/log/pihole-rescue-menu.log` | Rescue menu session log |
+| `/var/log/pihole_maintenance_pro_*.log` | Maintenance Pro logs |
+
+---
 
 ## Troubleshooting
 
-### Menu Doesn't Start
-
-Check script permissions:
+**Menu doesn't start:**
 ```bash
-chmod +x scripts/console_menu.sh
+chmod +x scripts/console_menu.sh scripts/rescue_menu.sh
+bash -n scripts/console_menu.sh   # syntax check
 ```
 
-Verify syntax:
+**Rescue menu permission error:**
 ```bash
-bash -n scripts/console_menu.sh
+sudo bash scripts/rescue_menu.sh  # always needs sudo
 ```
 
-### Dialog Not Working
-
-Install dialog package:
+**No color output:**
 ```bash
-sudo apt-get update
-sudo apt-get install -y dialog
+# Check terminal
+echo $TERM
+# Force color reset
+source scripts/lib/ui.sh && ui_init
 ```
-
-Or use the text fallback (works without dialog).
-
-### "Permission Denied" Errors
-
-Some operations require sudo. The menu will prompt when needed.
-
-To run the entire menu with sudo (not recommended):
-```bash
-sudo ./scripts/console_menu.sh
-```
-
-**Better:** Run menu normally and provide sudo password when prompted.
-
-## Advanced Usage
-
-### Scripted Execution
-
-While the menu is interactive, individual tools can be run non-interactively:
-
-```bash
-# Quick check
-./scripts/post_install_check.sh --quick
-
-# Full check
-sudo ./scripts/post_install_check.sh --full
-
-# Show URLs only
-./scripts/post_install_check.sh --urls
-
-# View manual steps
-./scripts/post_install_check.sh --steps | less
-```
-
-### Integration with Cron
-
-For automated checks (read-only):
-
-```bash
-# Add to crontab
-0 */6 * * * /home/user/Pi-hole-Unbound-PiAlert-Setup/scripts/post_install_check.sh --quick >> /var/log/pihole_check.log 2>&1
-```
-
-**Do NOT** run Maintenance Pro via cron without careful consideration.
-
-## File Locations
-
-- Menu script: `scripts/console_menu.sh`
-- Post-install checker: `scripts/post_install_check.sh`
-- Maintenance tool: `tools/pihole_maintenance_pro.sh`
-- Logs: `/var/log/pihole_maintenance_pro_*.log`
-
-## Support
-
-For issues or questions:
-- Check `scripts/post_install_check.sh --steps` for manual verification
-- Review logs in `/var/log/`
-- Consult main README.md for troubleshooting
-
-## License
-
-Same as main project (MIT License)
