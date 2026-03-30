@@ -320,7 +320,11 @@ show_text_menu() {
     printf '%s\n' "  [4] Manual Steps Guide"
     printf '%s\n' "  [5] Maintenance Pro (SAFE mode) - requires sudo"
     printf '%s\n' "  [6] View Logs"
-    printf '%s\n\n' "  [7] Exit"
+    printf '%s
+' "  [7] Rescue & Backup Menu"
+    printf '%s
+
+' "  [8] Exit"
     IFS= read -rp "Choice [1-8]: " choice
 
     case $choice in
@@ -358,18 +362,24 @@ Interactive management console for Pi-hole + Unbound suite.
 
 OPTIONS:
   --check       Run non-interactive check mode
+  --text        Force text-based menu (bypass dialog)
   -h, --help    Show this help message
 
 INTERACTIVE MODE:
   Run without arguments to start the interactive menu.
+  Option 7 opens the Rescue & Backup sub-menu (requires sudo).
 
 NOTE:
   If 'dialog' is installed, a graphical menu will be used.
   Otherwise, a text-based menu will be shown.
   Install dialog: sudo apt-get install -y dialog
+  Force text mode:  $(basename "$0") --text
 
 EOF
       exit 0
+      ;;
+    --text)
+      show_text_menu
       ;;
     "")
       # Try dialog menu first, fall back to text
