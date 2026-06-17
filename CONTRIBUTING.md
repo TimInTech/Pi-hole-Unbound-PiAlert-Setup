@@ -26,13 +26,13 @@ Enhancement suggestions are tracked as GitHub issues. When creating an enhanceme
 2. If you've added code that should be tested, add tests.
 3. Ensure the test suite passes (run `bash scripts/nightly_test.sh` if applicable).
 4. Update the documentation if your changes require it.
-5. Make sure your code follows the existing style (run `shellcheck` on bash scripts).
+5. Make sure your code follows the existing style (run `shellcheck` on bash scripts; `scripts/nightly_test.sh` also runs optional `shfmt` checks when available).
 6. Issue that pull request!
 
 ## Development Setup
 If you want to contribute to the codebase:
 1. Clone your fork locally.
 2. We highly recommend using a test environment (e.g. a Proxmox VM or a dedicated testing Raspberry Pi) instead of your production DNS server to avoid network downtime.
-3. For Python changes in the `start_suite.py`, set up a virtual environment and use `pylint` for formatting checks.
+3. For Python changes in `start_suite.py`, set up a virtual environment and install `requirements.txt`; the documented Python development tools are `ruff` and `pytest`.
 
 Thank you for your contributions!
