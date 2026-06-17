@@ -295,8 +295,8 @@ def dns(limit: int = 50) -> list[dict[str, Any]]:
 
 @app.get("/devices", dependencies=[Depends(require_api_key)])
 def devices() -> list[dict[str, Any]]:
-    # Placeholder: device discovery depends on NetAlertX/Pi.Alert APIs and is
-    # environment-specific.
+    # Placeholder: device discovery depends on NetAlertX (formerly Pi.Alert)
+    # APIs and is environment-specific.
     return []
 
 

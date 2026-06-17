@@ -6,7 +6,7 @@
 ## **One-Click DNS Security Stack**
 
 [![License](https://img.shields.io/github/license/TimInTech/Pi-hole-Unbound-PiAlert-Setup?style=for-the-badge&color=blue)](LICENSE)
-[![Pi-hole](https://img.shields.io/badge/Pi--hole-v6.4-red?style=for-the-badge&logo=pihole)](https://pi-hole.net/)
+[![Pi-hole](https://img.shields.io/badge/Pi--hole-v6.x-red?style=for-the-badge&logo=pihole)](https://pi-hole.net/)
 [![Unbound](https://img.shields.io/badge/Unbound-DNS-orange?style=for-the-badge)](https://nlnetlabs.nl/projects/unbound/)
 [![Debian](https://img.shields.io/badge/Debian-Bookworm%2FTrixie-red?style=for-the-badge&logo=debian)](https://debian.org/)
 [![Python](https://img.shields.io/badge/Python-3.12+-blue?style=for-the-badge&logo=python)](https://python.org/)
@@ -60,8 +60,12 @@ sudo ./install.sh
 Install prerequisites manually (optional):
 ```bash
 sudo apt-get update
-sudo apt-get install -y git curl jq dnsutils iproute2 openssl python3 python3-venv
+sudo apt-get install -y unbound unbound-host unbound-anchor dns-root-data \
+  ca-certificates curl dnsutils iproute2 python3 python3-venv python3-pip \
+  git openssl sqlite3 jq
 ```
+
+Install `docker.io` as well when you want the optional NetAlertX or containerized Pi-hole mode.
 
 ---
 
@@ -259,6 +263,23 @@ Network device monitoring (separate install):
 ```bash
 sudo ./install.sh --with-netalertx
 ```
+
+---
+
+## 🔎 Manual Update Check
+
+The host Pi-hole installer uses the official `https://install.pi-hole.net` installer and does not pin a patch release. Container mode uses `pihole/pihole:latest`; NetAlertX uses `jokobsk/netalertx:latest`.
+
+Run these checks manually during maintenance windows only:
+
+```bash
+pihole -v
+sudo pihole -up
+apt list --upgradable
+docker pull jokobsk/netalertx:latest
+```
+
+Use the Rescue Menu or create a backup before applying updates on a production Raspberry Pi.
 
 ---
 

@@ -10,7 +10,7 @@ fi
 
 # =============================================
 # POST-INSTALL CHECK SCRIPT
-# Read-only verification for Pi-hole + Unbound + Pi.Alert setup
+# Read-only verification for Pi-hole + Unbound + NetAlertX (formerly Pi.Alert) setup
 # =============================================
 
 VERSION="1.0.1"
@@ -195,7 +195,7 @@ STEP 5: Verify Optional Services
 If Docker is installed:
   docker ps
 
-If NetAlertX/Pi.Alert is running:
+If NetAlertX (formerly Pi.Alert) is running:
   Visit: http://[your-ip]:20211
 
 INTERPRETATION OF RESULTS:
@@ -214,7 +214,7 @@ EOF
 
 print_header() {
   printf '%.0s─' {1..64}; printf '\n'
-  printf 'POST-INSTALL CHECK — Pi-hole v6 / Unbound / Docker / Pi.Alert\n'
+  printf 'POST-INSTALL CHECK — Pi-hole v6 / Unbound / Docker / NetAlertX\n'
   printf 'Script: %s v%s (output language: English)\n' "$SCRIPT_NAME" "$VERSION"
   printf '%.0s─' {1..64}; printf '\n'
 }
@@ -427,7 +427,7 @@ check_docker() {
 }
 
 check_netalertx() {
-  section "NetAlertX / Pi.Alert"
+  section "NetAlertX (formerly Pi.Alert)"
 
   local found=false
   local port=""
@@ -471,7 +471,7 @@ check_netalertx() {
 
   if systemctl list-units --type=service --all 2>/dev/null | grep -qiE 'pi.?alert'; then
     if systemctl is-active --quiet pialert 2>/dev/null || systemctl is-active --quiet pi-alert 2>/dev/null; then
-      pass "Pi.Alert service is running"
+      pass "Legacy Pi.Alert service is running"
       found=true
     fi
   fi
@@ -479,7 +479,7 @@ check_netalertx() {
   if $found && [[ -n "$port" ]]; then
     info "NetAlertX likely at: http://$(hostname -I | awk '{print $1}'):${port}"
   elif ! $found; then
-    info "NetAlertX/Pi.Alert not detected (optional component)"
+    info "NetAlertX / legacy Pi.Alert not detected (optional component)"
   fi
 }
 
@@ -699,7 +699,7 @@ show_usage() {
   cat <<EOF
 Usage: $SCRIPT_NAME [OPTIONS]
 
-Post-installation verification script for Pi-hole + Unbound + Pi.Alert setup.
+Post-installation verification script for Pi-hole + Unbound + NetAlertX (formerly Pi.Alert) setup.
 Performs read-only checks to verify service health and configuration.
 
 OPTIONS:
