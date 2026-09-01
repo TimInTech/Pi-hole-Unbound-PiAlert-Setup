@@ -2,6 +2,7 @@
 # ============================================================================
 # Pi-hole v6.x – Full Maintenance PRO MAX  (NO-BACKUP EDITION)
 # Version: 5.3.2 (2025-10-10)
+# Synced from pihole-maintenance-pro commit 5010ace
 # Authors: TimInTech
 # ----------------------------------------------------------------------------
 # v5.3.2
@@ -27,7 +28,7 @@ if [[ -f "$UI_LIB" ]]; then
 fi
 
 # Voller PATH für cron/Nicht-Login-Shells (früh setzen)
-export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH}"
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 # --------------------------- Colors & symbols -------------------------------
 RED="${UI_RED:-}"
@@ -38,9 +39,6 @@ MAGENTA="${UI_MAGENTA:-}"
 CYAN="${UI_CYAN:-}"
 BOLD="${UI_BOLD:-}"
 NC="${UI_RESET:-}"
-CHECK="${GREEN}✔${NC}"
-WARN="${YELLOW}⚠${NC}"
-FAIL="${RED}✖${NC}"
 
 # --------------------------- Root check ------------------------------------
 # Für sicheren lokalen Selftest (RUN_SELFTEST=1) ohne Root erlauben
@@ -148,7 +146,7 @@ else
   printf '%sHinweis:%s /var/log nicht beschreibbar, Log nach %s.\n' "$YELLOW" "$NC" "$TMPDIR"
 fi
 
-cleanup_tmpdir() { rm -rf "$TMPDIR" 2>/dev/null || true; }
+cleanup_tmpdir() { rm -rf "$TMPDIR" 2> /dev/null || true; }
 trap cleanup_tmpdir EXIT INT TERM
 exec > >(tee -a "$LOGFILE") 2>&1
 
@@ -238,7 +236,21 @@ collect_system_info() {
 extract_step_data() {
   local step_num="$1" output="$2"
   case "$step_num" in
-    00) STEP_DATA[00_ip]=$(echo "$output" | grep -oE '192\.168\.[0-9]+\.[0-9]+|10\.[0-9]+\.[0-9]+\.[0-9]+|172\.(1[6-9]|2[0-9]|3[0-1])\.[0-9]+\.[0-9]+' | head -1) ;;
+    # Fehlende RFC1918-IP (grep Exit 1) ist ein erlaubter Zustand und darf unter
+    # set -euo pipefail nicht abbrechen; echte grep-Fehler werden weitergereicht.
+    00)
+      local step_ip=""
+      if step_ip=$(grep -m1 -oE '192\.168\.[0-9]+\.[0-9]+|10\.[0-9]+\.[0-9]+\.[0-9]+|172\.(1[6-9]|2[0-9]|3[0-1])\.[0-9]+\.[0-9]+' <<< "$output"); then
+        STEP_DATA[00_ip]="$step_ip"
+      else
+        local grep_rc=$?
+        if [[ "$grep_rc" -eq 1 ]]; then
+          STEP_DATA[00_ip]=""
+        else
+          return "$grep_rc"
+        fi
+      fi
+      ;;
     03) STEP_DATA[03_version]=$(echo "$output" | grep "Core version" | awk '{print $4}') ;;
     07) STEP_DATA[07_listeners]=$(echo "$output" | wc -l) ;;
     08) STEP_DATA[08_response]=$(echo "$output" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -1) ;;
@@ -430,9 +442,14 @@ for c in /etc/pihole/pihole-FTL.db /run/pihole-FTL.db /var/lib/pihole/pihole-FTL
 done
 # (gravity DB path is queried lazily when needed)
 
+# Re-Entry-Guard: verhindert doppelte Summary/Cleanup, falls on_exit sowohl über
+# ein Signal als auch über den finalen EXIT ausgelöst würde.
+ON_EXIT_DONE=0
 # shellcheck disable=SC2317  # trap callback is invoked by bash
 on_exit() {
   local rc="$1"
+  [[ "$ON_EXIT_DONE" == "1" ]] && return
+  ON_EXIT_DONE=1
   echo ""
   if [[ "$JSON_OUTPUT" == "1" ]]; then
     output_json 2> /dev/null || true
@@ -441,9 +458,17 @@ on_exit() {
   fi
   cleanup_tmpdir
   [[ $rc -ne 0 ]] && printf '%sScript ended with exit code %s%s\n' "$RED" "$rc" "$NC"
+  # Exit-Status explizit erhalten: ohne dieses exit würde bei rc=0 die vorherige
+  # (falsche) [[ ]]-Bedingung als Rückgabewert der EXIT-Trap durchschlagen und
+  # erfolgreiche Läufe fälschlich als Fehler (Code 1) melden. Re-Entry-Guard
+  # oben verhindert dabei doppelte Summary/Cleanup.
   exit "$rc"
 }
-trap 'on_exit $?' EXIT INT TERM
+# on_exit läuft genau einmal über EXIT; INT/TERM leiten sauber dorthin um und
+# sorgen so auch bei Ctrl-C für Summary + tmp-Cleanup.
+trap 'on_exit $?' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # --------------------------- Run -------------------------------------------
 echo_hdr
@@ -462,7 +487,7 @@ if ((DO_APT == 1)); then
   export DEBIAN_FRONTEND=noninteractive
   run_step 01 "🔄" "APT: update & upgrade" "apt update && apt -y upgrade" true
   run_step 02 "🧹" "APT: autoremove & autoclean" "apt -y autoremove && apt -y autoclean"
-      if dpkg --print-architecture | grep -q '^armhf$'; then
+  if dpkg --print-architecture | grep -q '^armhf$'; then
     if apt list --upgradable 2> /dev/null | grep -q '^linux-image-rpi-v8'; then
       printf '%sHinweis:%s '\''linux-image-rpi-v8'\'' ist 64-bit (ARMv8). Auf Pi 3B (ARMv7) ignorierbar.\n' "$YELLOW" "$NC"
     fi
