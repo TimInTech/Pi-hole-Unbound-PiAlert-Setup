@@ -10,23 +10,25 @@ import grp
 import hashlib
 import json
 import os
+import platform
 import re
 import shutil
+import signal
 import sqlite3
 import subprocess
 import sys
 import tempfile
 import uuid
-import platform
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Sequence
 
 
-MAX_OUTPUT_LENGTH = 2_000
 STATE_FILE_MODE = 0o640
 BACKUP_DIR_MODE = 0o700
-ALLOWED_ACTIONS = ("check", "backup", "update")
+CHECK_COMMAND_TIMEOUT_SECONDS = 30
+UPDATE_COMMAND_TIMEOUT_SECONDS = 7_200
+PROCESS_TERMINATION_GRACE_SECONDS = 5
 
 
 class Action(str, enum.Enum):
@@ -42,7 +44,7 @@ class CommandResult:
     stderr: str = ""
 
 
-CommandExecutor = Callable[[list[str]], CommandResult]
+CommandExecutor = Callable[[list[str], int], CommandResult]
 
 
 @dataclass(frozen=True)
@@ -63,27 +65,48 @@ class RunnerContext:
             object.__setattr__(self, "command_executor", _run_command)
 
 
-def _run_command(argv: list[str]) -> CommandResult:
+def _run_command(argv: list[str], timeout_seconds: int = CHECK_COMMAND_TIMEOUT_SECONDS) -> CommandResult:
     environment = {"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}
     if argv == ["/usr/bin/apt-get", "-y", "upgrade"]:
         environment["DEBIAN_FRONTEND"] = "noninteractive"
     try:
-        completed = subprocess.run(
+        process = subprocess.Popen(
             argv,
-            check=False,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=300,
             env=environment,
+            start_new_session=True,
         )
-    except (OSError, subprocess.TimeoutExpired) as error:
-        return CommandResult(returncode=1, stderr=str(error))
-    return CommandResult(completed.returncode, completed.stdout, completed.stderr)
+    except OSError:
+        return CommandResult(returncode=127)
+    try:
+        stdout, stderr = process.communicate(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        _terminate_process_group(process)
+        return CommandResult(returncode=124)
+    return CommandResult(process.returncode, stdout, stderr)
 
 
-def _sanitize_output(value: str) -> str:
-    clean = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]", "", value)
-    return clean[:MAX_OUTPUT_LENGTH]
+def _terminate_process_group(process: subprocess.Popen[str]) -> None:
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    try:
+        process.communicate(timeout=PROCESS_TERMINATION_GRACE_SECONDS)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            return
+        process.communicate()
+        return
+    try:
+        os.killpg(process.pid, 0)
+    except ProcessLookupError:
+        return
+    os.killpg(process.pid, signal.SIGKILL)
 
 
 def _utc_now() -> str:
@@ -141,48 +164,63 @@ def _write_state(payload: dict[str, Any], context: RunnerContext, *, history: bo
         _atomic_json_write(context.state_dir / f"{payload['job_id']}.json", payload, context)
 
 
-def _command_step(name: str, argv: list[str], context: RunnerContext, *, required: bool = True) -> dict[str, Any]:
+def _command_step(
+    name: str,
+    argv: list[str],
+    context: RunnerContext,
+    *,
+    timeout_seconds: int,
+    required: bool = True,
+) -> tuple[dict[str, Any], CommandResult]:
     assert context.command_executor is not None
-    result = context.command_executor(argv)
+    result = context.command_executor(argv, timeout_seconds)
+    detail = "completed"
+    if result.returncode == 124:
+        detail = "timed_out"
+    elif result.returncode != 0:
+        detail = "command_failed"
     return {
         "name": name,
         "required": required,
         "ok": result.returncode == 0,
-        "output": _sanitize_output(result.stdout),
-        "error_output": _sanitize_output(result.stderr),
-    }
+        "detail": detail,
+    }, result
 
 
 def _run_check(context: RunnerContext) -> tuple[list[dict[str, Any]], str | None]:
-    steps = [
-        _command_step("pihole_ftl", ["/usr/bin/systemctl", "is-active", "pihole-FTL"], context),
-        _command_step("unbound", ["/usr/bin/systemctl", "is-active", "unbound"], context),
-        _command_step("pihole_version", [context.pihole_bin, "-v"], context),
-        _command_step("unbound_version", ["/usr/sbin/unbound", "-V"], context),
-        _command_step("unbound_config", ["/usr/sbin/unbound-checkconf"], context),
-        _command_step("listeners", ["/usr/bin/ss", "-ltnu"], context),
+    executions = [
+        _command_step("pihole_ftl", ["/usr/bin/systemctl", "is-active", "pihole-FTL"], context, timeout_seconds=CHECK_COMMAND_TIMEOUT_SECONDS),
+        _command_step("unbound", ["/usr/bin/systemctl", "is-active", "unbound"], context, timeout_seconds=CHECK_COMMAND_TIMEOUT_SECONDS),
+        _command_step("pihole_version", [context.pihole_bin, "-v"], context, timeout_seconds=CHECK_COMMAND_TIMEOUT_SECONDS),
+        _command_step("unbound_version", ["/usr/sbin/unbound", "-V"], context, timeout_seconds=CHECK_COMMAND_TIMEOUT_SECONDS),
+        _command_step("unbound_config", ["/usr/sbin/unbound-checkconf"], context, timeout_seconds=CHECK_COMMAND_TIMEOUT_SECONDS),
+        _command_step("listeners", ["/usr/bin/ss", "-ltnu"], context, timeout_seconds=CHECK_COMMAND_TIMEOUT_SECONDS),
         _command_step(
             "dns_pihole",
             ["/usr/bin/dig", "+short", "@127.0.0.1", "example.com", "+time=3", "+tries=1"],
             context,
+            timeout_seconds=CHECK_COMMAND_TIMEOUT_SECONDS,
         ),
         _command_step(
             "dns_unbound",
             ["/usr/bin/dig", "+short", "-p", "5335", "@127.0.0.1", "example.com", "+time=3", "+tries=1"],
             context,
+            timeout_seconds=CHECK_COMMAND_TIMEOUT_SECONDS,
         ),
-        _command_step("apt_simulation", ["/usr/bin/apt-get", "-s", "upgrade"], context),
+        _command_step("apt_simulation", ["/usr/bin/apt-get", "-s", "upgrade"], context, timeout_seconds=CHECK_COMMAND_TIMEOUT_SECONDS),
     ]
+    steps = [step for step, _ in executions]
+    outputs = {step["name"]: result.stdout for step, result in executions}
     for step in steps:
-        if step["name"] in {"dns_pihole", "dns_unbound"} and step["ok"] and not step["output"].strip():
+        if step["name"] in {"dns_pihole", "dns_unbound"} and step["ok"] and not outputs[step["name"]].strip():
             step["ok"] = False
-            step["error_output"] = "DNS query returned no answer"
+            step["detail"] = "no_answer"
     listener_step = next(step for step in steps if step["name"] == "listeners")
     if listener_step["ok"] and not all(
-        re.search(rf":{port}(?:\s|$)", listener_step["output"]) for port in (53, 5335)
+        re.search(rf":{port}(?:\s|$)", outputs["listeners"]) for port in (53, 5335)
     ):
         listener_step["ok"] = False
-        listener_step["error_output"] = "required DNS listener is missing"
+        listener_step["detail"] = "required_listener_missing"
     if any(not step["ok"] and step["required"] for step in steps):
         return steps, "check_failed"
     return steps, None
@@ -218,6 +256,7 @@ def _manifest(staging: Path, job_id: str) -> Path:
     manifest_path.write_text(
         json.dumps(
             {
+                "schema_version": 1,
                 "job_id": job_id,
                 "created_at": _utc_now(),
                 "host": platform.node(),
@@ -233,11 +272,57 @@ def _manifest(staging: Path, job_id: str) -> Path:
 
 
 def _verify_manifest(staging: Path) -> None:
-    manifest = json.loads((staging / "manifest.json").read_text(encoding="utf-8"))
+    try:
+        manifest = json.loads((staging / "manifest.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        raise RuntimeError("manifest is unreadable") from None
+    required_keys = {"schema_version", "job_id", "created_at", "host", "versions", "files"}
+    if not isinstance(manifest, dict) or set(manifest) != required_keys:
+        raise RuntimeError("manifest schema is invalid")
+    if manifest["schema_version"] != 1 or not all(isinstance(manifest[key], str) and manifest[key] for key in ("job_id", "created_at", "host")):
+        raise RuntimeError("manifest metadata is invalid")
+    if not isinstance(manifest["versions"], dict) or not manifest["versions"] or not all(
+        isinstance(key, str) and key and isinstance(value, str) and value for key, value in manifest["versions"].items()
+    ):
+        raise RuntimeError("manifest versions are invalid")
+    if not isinstance(manifest["files"], list) or not manifest["files"]:
+        raise RuntimeError("manifest file list is invalid")
+
+    actual_files: dict[str, Path] = {}
+    for candidate in staging.rglob("*"):
+        if candidate == staging / "manifest.json":
+            continue
+        if candidate.is_symlink():
+            raise RuntimeError("manifest staging contains a symlink")
+        if candidate.is_file():
+            actual_files[candidate.relative_to(staging).as_posix()] = candidate
+        elif not candidate.is_dir():
+            raise RuntimeError("manifest staging contains an unsupported entry")
+
+    listed_files: dict[str, dict[str, Any]] = {}
     for entry in manifest["files"]:
-        candidate = staging / entry["path"]
-        if not candidate.is_file() or candidate.stat().st_size != entry["size"] or _sha256(candidate) != entry["sha256"]:
-            raise RuntimeError(f"manifest verification failed for {entry['path']}")
+        if not isinstance(entry, dict) or set(entry) != {"path", "sha256", "size"}:
+            raise RuntimeError("manifest file entry is invalid")
+        path_value = entry["path"]
+        if not isinstance(path_value, str) or not path_value or "\\" in path_value:
+            raise RuntimeError("manifest file path is invalid")
+        relative_path = PurePosixPath(path_value)
+        if relative_path.is_absolute() or path_value != relative_path.as_posix() or any(part in {".", ".."} for part in relative_path.parts):
+            raise RuntimeError("manifest file path is invalid")
+        if not isinstance(entry["sha256"], str) or not re.fullmatch(r"[0-9a-f]{64}", entry["sha256"]):
+            raise RuntimeError("manifest file hash is invalid")
+        if not isinstance(entry["size"], int) or isinstance(entry["size"], bool) or entry["size"] < 0:
+            raise RuntimeError("manifest file size is invalid")
+        if path_value in listed_files:
+            raise RuntimeError("manifest contains duplicate files")
+        listed_files[path_value] = entry
+
+    if "pihole/pihole.toml" not in actual_files or set(listed_files) != set(actual_files):
+        raise RuntimeError("manifest file coverage is incomplete")
+    for path_value, entry in listed_files.items():
+        candidate = actual_files[path_value]
+        if candidate.stat().st_size != entry["size"] or _sha256(candidate) != entry["sha256"]:
+            raise RuntimeError("manifest file verification failed")
 
 
 def _copy_regular_file(source: Path, destination: Path) -> None:
@@ -345,10 +430,10 @@ def _run_backup(context: RunnerContext, job_id: str) -> tuple[list[dict[str, Any
         published = context.backup_root / f"{_utc_now().replace(':', '').replace('-', '')}-{job_id}"
         os.replace(staging, published)
         _retain_newest_backups(context.backup_root)
-        return [{"name": "backup", "required": True, "ok": True}], None, str(published)
-    except (OSError, sqlite3.Error, ValueError, RuntimeError) as error:
+        return [{"name": "backup", "required": True, "ok": True, "detail": "completed"}], None, str(published)
+    except (OSError, sqlite3.Error, ValueError, RuntimeError):
         shutil.rmtree(staging, ignore_errors=True)
-        return [{"name": "backup", "required": True, "ok": False, "error_output": _sanitize_output(str(error))}], "backup_failed", None
+        return [{"name": "backup", "required": True, "ok": False, "detail": "backup_failed"}], "backup_failed", None
 
 
 def _run_update(context: RunnerContext, job_id: str) -> tuple[list[dict[str, Any]], str | None, str | None]:
@@ -361,7 +446,7 @@ def _run_update(context: RunnerContext, job_id: str) -> tuple[list[dict[str, Any
         ("pihole_update", [context.pihole_bin, "-up"]),
         ("pihole_gravity", [context.pihole_bin, "-g"]),
     ):
-        step = _command_step(name, argv, context)
+        step, _ = _command_step(name, argv, context, timeout_seconds=UPDATE_COMMAND_TIMEOUT_SECONDS)
         steps.append(step)
         if not step["ok"]:
             return steps, "update_failed", backup_path
@@ -415,10 +500,10 @@ def run_job(action: Action | str, context: RunnerContext) -> dict[str, Any]:
             if selected_action is Action.UPDATE:
                 result["reboot_required"] = context.reboot_required_path.exists()
             payload["result"] = result
-        except (OSError, RuntimeError) as error:
+        except (OSError, RuntimeError):
             payload["state"] = "failed"
             payload["finished_at"] = _utc_now()
-            payload["error"] = {"code": "runner_failed", "message": _sanitize_output(str(error))}
+            payload["error"] = {"code": "runner_failed", "message": "maintenance runner failed"}
         _write_state(payload, context, history=True)
         return payload
 
