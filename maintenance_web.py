@@ -8,6 +8,7 @@ import os
 import secrets
 import stat
 import subprocess
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -21,6 +22,7 @@ SESSION_IDLE_SECONDS = 30 * 60
 SESSION_MAX_SECONDS = 8 * 60 * 60
 LOGIN_WINDOW_SECONDS = 5 * 60
 LOGIN_MAX_FAILURES = 5
+START_RESERVATION_SECONDS = 60
 MAX_STATE_BYTES = 64 * 1024
 COOKIE_NAME = "pihole_maintenance_session"
 ALLOWED_HOSTS = frozenset({"pi.hole", "192.168.178.2", "127.0.0.1", "localhost"})
@@ -41,6 +43,13 @@ class Session:
     last_seen_at: float
 
 
+@dataclass(frozen=True)
+class StartReservation:
+    token: str
+    baseline_job_id: str | None
+    expires_at: float
+
+
 @dataclass
 class MaintenanceSettings:
     """Configuration owned by the local service, never supplied by a request."""
@@ -52,6 +61,8 @@ class MaintenanceSettings:
     allowed_origins: frozenset[str] = ALLOWED_ORIGINS
     sessions: dict[str, Session] = field(default_factory=dict)
     login_failures: dict[str, list[float]] = field(default_factory=dict)
+    state_lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
+    start_reservation: StartReservation | None = None
     now: Callable[[], float] = time.monotonic
 
     def __post_init__(self) -> None:
@@ -111,17 +122,39 @@ def _purge_expired_failures(settings: MaintenanceSettings, client_key: str, now:
     return recent
 
 
+def _purge_expired_sessions(settings: MaintenanceSettings, now: float) -> None:
+    expired = [
+        session_id
+        for session_id, session in settings.sessions.items()
+        if now - session.last_seen_at >= SESSION_IDLE_SECONDS or now - session.created_at >= SESSION_MAX_SECONDS
+    ]
+    for session_id in expired:
+        settings.sessions.pop(session_id, None)
+
+
+def _observe_runner_state(settings: MaintenanceSettings, state: dict[str, Any] | None, now: float) -> None:
+    reservation = settings.start_reservation
+    if reservation is None:
+        return
+    if now >= reservation.expires_at:
+        settings.start_reservation = None
+        return
+    if state is not None and state["job_id"] != reservation.baseline_job_id:
+        settings.start_reservation = None
+
+
 def _session_from_request(request: Request, settings: MaintenanceSettings) -> tuple[str, Session]:
     session_id = request.cookies.get(COOKIE_NAME)
     if not session_id:
         raise HTTPException(status_code=401, detail="Authentication required")
-    session = settings.sessions.get(session_id)
     now = settings.now()
-    if session is None or now - session.last_seen_at >= SESSION_IDLE_SECONDS or now - session.created_at >= SESSION_MAX_SECONDS:
-        settings.sessions.pop(session_id, None)
-        raise HTTPException(status_code=401, detail="Authentication required")
-    session.last_seen_at = now
-    return session_id, session
+    with settings.state_lock:
+        _purge_expired_sessions(settings, now)
+        session = settings.sessions.get(session_id)
+        if session is None:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        session.last_seen_at = now
+        return session_id, session
 
 
 def _require_mutation(request: Request, settings: MaintenanceSettings) -> tuple[str, Session]:
@@ -242,6 +275,8 @@ def _state_or_error(settings: MaintenanceSettings) -> dict[str, Any]:
         state = _read_current_state(settings)
     except StateUnavailable:
         raise HTTPException(status_code=503, detail="Job status unavailable")
+    with settings.state_lock:
+        _observe_runner_state(settings, state, settings.now())
     return state if state is not None else {"state": "idle"}
 
 
@@ -273,23 +308,25 @@ def create_maintenance_router(settings: MaintenanceSettings) -> APIRouter:
 
     @router.post("/api/session", include_in_schema=False)
     async def create_session(request: Request, response: Response) -> dict[str, str]:
-        now = settings.now()
-        client_key = _client_key(request)
-        if len(_purge_expired_failures(settings, client_key, now)) >= LOGIN_MAX_FAILURES:
-            raise HTTPException(status_code=429, detail="Too many login attempts")
         try:
             body = await request.body()
             parsed = json.loads(body) if len(body) <= 8192 else {}
             password = parsed.get("password") if isinstance(parsed, dict) and set(parsed) == {"password"} else None
         except (UnicodeDecodeError, json.JSONDecodeError):
             password = None
-        if not isinstance(password, str) or not password or len(password) > 4096 or not hmac.compare_digest(password, settings.api_key):
-            settings.login_failures.setdefault(client_key, []).append(now)
-            raise HTTPException(status_code=401, detail="Invalid credentials")
-        settings.login_failures.pop(client_key, None)
-        session_id = secrets.token_urlsafe(32)
-        csrf_token = secrets.token_urlsafe(32)
-        settings.sessions[session_id] = Session(csrf_token=csrf_token, created_at=now, last_seen_at=now)
+        now = settings.now()
+        client_key = _client_key(request)
+        with settings.state_lock:
+            _purge_expired_sessions(settings, now)
+            if len(_purge_expired_failures(settings, client_key, now)) >= LOGIN_MAX_FAILURES:
+                raise HTTPException(status_code=429, detail="Too many login attempts")
+            if not isinstance(password, str) or not password or len(password) > 4096 or not hmac.compare_digest(password, settings.api_key):
+                settings.login_failures.setdefault(client_key, []).append(now)
+                raise HTTPException(status_code=401, detail="Invalid credentials")
+            settings.login_failures.pop(client_key, None)
+            session_id = secrets.token_urlsafe(32)
+            csrf_token = secrets.token_urlsafe(32)
+            settings.sessions[session_id] = Session(csrf_token=csrf_token, created_at=now, last_seen_at=now)
         response.set_cookie(
             COOKIE_NAME,
             session_id,
@@ -302,7 +339,8 @@ def create_maintenance_router(settings: MaintenanceSettings) -> APIRouter:
 
     @router.post("/api/session/logout", status_code=204, include_in_schema=False)
     def logout(session: tuple[str, Session] = Depends(require_mutation)) -> Response:
-        settings.sessions.pop(session[0], None)
+        with settings.state_lock:
+            settings.sessions.pop(session[0], None)
         response = Response(status_code=204)
         response.delete_cookie(COOKIE_NAME, path="/", secure=True, httponly=True, samesite="strict")
         return response
@@ -312,12 +350,21 @@ def create_maintenance_router(settings: MaintenanceSettings) -> APIRouter:
         return _state_or_error(settings)
 
     def start_action(action: str) -> JSONResponse:
-        try:
-            state = _read_current_state(settings)
-        except StateUnavailable:
-            raise HTTPException(status_code=503, detail="Job status unavailable") from None
-        if state is not None and state["state"] == "running":
-            raise HTTPException(status_code=409, detail="A maintenance job is already running")
+        with settings.state_lock:
+            try:
+                state = _read_current_state(settings)
+            except StateUnavailable:
+                raise HTTPException(status_code=503, detail="Job status unavailable") from None
+            now = settings.now()
+            _observe_runner_state(settings, state, now)
+            if settings.start_reservation is not None or (state is not None and state["state"] == "running"):
+                raise HTTPException(status_code=409, detail="A maintenance job is already running")
+            reservation = StartReservation(
+                token=secrets.token_urlsafe(16),
+                baseline_job_id=state["job_id"] if state is not None else None,
+                expires_at=now + START_RESERVATION_SECONDS,
+            )
+            settings.start_reservation = reservation
         argv = [
             "/usr/bin/sudo", "-n", "/usr/bin/systemctl", "start", "--no-block",
             f"pihole-maintenance-{action}.service",
@@ -326,6 +373,9 @@ def create_maintenance_router(settings: MaintenanceSettings) -> APIRouter:
             assert settings.dispatcher is not None
             settings.dispatcher(argv)
         except (OSError, subprocess.SubprocessError):
+            with settings.state_lock:
+                if settings.start_reservation == reservation:
+                    settings.start_reservation = None
             raise HTTPException(status_code=503, detail="Maintenance job could not be started") from None
         return JSONResponse(status_code=202, content={"action": action, "state": "accepted"})
 

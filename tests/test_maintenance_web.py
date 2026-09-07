@@ -1,5 +1,8 @@
+import asyncio
 import importlib
 import json
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -11,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from maintenance_web import (
     MaintenanceSettings,
+    Session,
     configure_maintenance_security,
     create_maintenance_router,
 )
@@ -124,6 +128,24 @@ def test_login_rate_limits_five_failures(client: TestClient):
     assert "correct horse battery staple" not in response.text
 
 
+def test_parallel_login_failures_cannot_bypass_rate_limit(client: TestClient):
+    async def failed_logins() -> list[int]:
+        import httpx
+
+        transport = httpx.ASGITransport(app=client.app)
+        async with httpx.AsyncClient(transport=transport, base_url="https://pi.hole:8443") as asgi_client:
+            responses = await asyncio.gather(*[
+                asgi_client.post("/api/session", json={"password": "wrong"})
+                for _ in range(7)
+            ])
+            locked = await asgi_client.post("/api/session", json={"password": "correct horse battery staple"})
+        return [response.status_code for response in responses] + [locked.status_code]
+
+    statuses = asyncio.run(failed_logins())
+    assert statuses.count(401) == 5
+    assert statuses.count(429) == 3
+
+
 def test_invalid_login_body_never_reflects_password(client: TestClient):
     secret = "must-not-be-reflected"
 
@@ -162,6 +184,54 @@ def test_first_job_can_start_without_a_preexisting_state_file(client: TestClient
 
     assert response.status_code == 202
     assert dispatcher.calls
+
+
+def test_immediate_parallel_starts_are_reserved(client: TestClient):
+    cookies, csrf_token = login(client)
+
+    async def starts() -> list[int]:
+        import httpx
+
+        transport = httpx.ASGITransport(app=client.app)
+        async with httpx.AsyncClient(transport=transport, base_url="https://pi.hole:8443") as asgi_client:
+            responses = await asyncio.gather(*[
+                asgi_client.post(
+                    "/api/maintenance/check",
+                    cookies=cookies,
+                    headers={"Origin": "https://pi.hole:8443", "X-CSRF-Token": csrf_token},
+                )
+                for _ in range(2)
+            ])
+        return [response.status_code for response in responses]
+
+    assert sorted(asyncio.run(starts())) == [202, 409]
+
+
+def test_failed_dispatch_releases_start_reservation(client: TestClient, settings: MaintenanceSettings):
+    cookies, csrf_token = login(client)
+
+    def fail_dispatch(_: list[str]) -> None:
+        raise OSError("systemctl unavailable")
+
+    settings.dispatcher = fail_dispatch
+    assert post_action(client, cookies, csrf_token, "check").status_code == 503
+    settings.dispatcher = RecordingDispatcher()
+    assert post_action(client, cookies, csrf_token, "check").status_code == 202
+
+
+def test_new_runner_state_or_timeout_releases_start_reservation(client: TestClient, settings: MaintenanceSettings, state_file: Path):
+    clock = [0.0]
+    settings.now = lambda: clock[0]
+    cookies, csrf_token = login(client)
+    assert post_action(client, cookies, csrf_token, "check").status_code == 202
+
+    new_state = state_payload()
+    new_state["job_id"] = "20260907T120000000001Z-fedcba9876543210"
+    state_file.write_text(json.dumps(new_state), encoding="utf-8")
+    assert post_action(client, cookies, csrf_token, "backup").status_code == 202
+
+    clock[0] = 61.0
+    assert post_action(client, cookies, csrf_token, "update").status_code == 202
 
 
 def test_unknown_action_is_not_routable(client: TestClient):
@@ -211,6 +281,16 @@ def test_session_expires_after_idle_or_absolute_lifetime(client: TestClient, set
     assert client.get("/api/maintenance/status", cookies=cookies).status_code == 401
 
 
+def test_expired_sessions_are_pruned_during_normal_login(client: TestClient, settings: MaintenanceSettings):
+    clock = [10_000.0]
+    settings.now = lambda: clock[0]
+    settings.sessions["expired"] = Session("csrf", 0.0, 0.0)
+
+    login(client)
+
+    assert "expired" not in settings.sessions
+
+
 def test_ui_assets_headers_and_docs_are_safe(client: TestClient):
     page = client.get("/")
     css = client.get("/maintenance.css")
@@ -242,8 +322,34 @@ def test_browser_ui_uses_confirmation_text_content_and_running_only_polling(clie
     assert "UPDATE" in page
     assert "textContent" in script
     assert "innerHTML" not in script
-    assert 'if (job.state === "running")' in script
+    assert 'poll: job.state === "running"' in script
     assert "2000" in script
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="Node.js is only needed for the browser-state regression")
+def test_browser_transition_polling_reaches_running_then_terminal_state():
+    script_path = Path(__file__).resolve().parents[1] / "web" / "maintenance.js"
+    node_program = f"""
+const fs = require("fs");
+const vm = require("vm");
+const element = {{ addEventListener() {{}}, value: "", checked: false, hidden: false, textContent: "" }};
+const context = {{
+  document: {{ querySelector: () => element }},
+  window: {{ clearTimeout() {{}}, setTimeout() {{ return 1; }}, location: {{ origin: "https://pi.hole:8443" }} }},
+  Headers,
+  fetch: async () => {{ throw new Error("fetch is not expected"); }},
+}};
+vm.runInNewContext(fs.readFileSync({json.dumps(str(script_path))}, "utf8") + ";globalThis.decision = pollingDecision;", context);
+let pending = {{ baselineJobId: "old-job", attempts: 0 }};
+let decision = context.decision({{ job_id: "old-job", state: "succeeded" }}, pending);
+if (!decision.poll || decision.pending.attempts !== 1) throw new Error("old terminal state did not continue transition polling");
+decision = context.decision({{ job_id: "new-job", state: "running" }}, decision.pending);
+if (!decision.poll || decision.pending !== null) throw new Error("running new job was not observed");
+decision = context.decision({{ job_id: "new-job", state: "succeeded" }}, decision.pending);
+if (decision.poll) throw new Error("terminal new job still polls");
+"""
+
+    subprocess.run(["node", "-e", node_program], check=True, capture_output=True, text=True)
 
 
 def test_suite_keeps_the_legacy_monitoring_api(monkeypatch: pytest.MonkeyPatch):
