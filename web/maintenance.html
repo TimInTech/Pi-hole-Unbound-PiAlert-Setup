@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pi-hole Wartung</title>
+  <link rel="stylesheet" href="/maintenance.css">
+</head>
+<body>
+  <main>
+    <h1>Pi-hole Wartung</h1>
+    <section id="login-panel" aria-labelledby="login-heading">
+      <h2 id="login-heading">Anmelden</h2>
+      <form id="login-form">
+        <label for="password">Wartungskennwort</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+        <button type="submit">Anmelden</button>
+      </form>
+    </section>
+    <section id="dashboard" hidden aria-live="polite">
+      <p id="status">Noch kein Wartungsauftrag.</p>
+      <div class="actions">
+        <article><h2>Systemcheck</h2><p>Prüft Pi-hole, Unbound und DNS.</p><button id="check-button" type="button">Systemcheck starten</button></article>
+        <article><h2>Backup</h2><p>Erstellt ein verifiziertes Sicherungsarchiv.</p><label><input id="backup-confirmed" type="checkbox"> Backup bestätigen</label><button id="backup-button" type="button">Backup erstellen</button></article>
+        <article><h2>Update</h2><p>Erstellt zuerst ein Backup und aktualisiert danach kontrolliert.</p><label for="update-confirmation">Zum Bestätigen UPDATE eingeben</label><input id="update-confirmation" type="text" autocomplete="off"><button id="update-button" type="button">Update starten</button></article>
+      </div>
+      <button id="logout-button" type="button">Abmelden</button>
+      <pre id="job-result" aria-label="Ergebnis"></pre>
+    </section>
+  </main>
+  <script src="/maintenance.js" defer></script>
+</body>
+</html>

@@ -33,6 +33,8 @@ from urllib.request import Request, urlopen
 from fastapi import Depends, FastAPI, Header, HTTPException
 import uvicorn
 
+from maintenance_web import MaintenanceSettings, configure_maintenance_security, create_maintenance_router
+
 APP_VERSION = "1.0.0"
 START_TIME = time.time()
 
@@ -54,7 +56,16 @@ def require_api_key(x_api_key: str | None = Header(default=None, alias="X-API-Ke
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
-app = FastAPI(title="Pi-hole Suite API", version=APP_VERSION)
+app = FastAPI(
+    title="Pi-hole Suite API",
+    version=APP_VERSION,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+)
+maintenance_settings = MaintenanceSettings.from_environment()
+configure_maintenance_security(app, maintenance_settings)
+app.include_router(create_maintenance_router(maintenance_settings))
 
 
 def _read_lines(path: str, limit: int) -> list[str]:

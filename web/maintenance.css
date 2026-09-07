@@ -1,0 +1,7 @@
+:root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+body { margin: 0; padding: 2rem; }
+main { margin: auto; max-width: 68rem; }
+.actions { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }
+article, section { border: 1px solid currentColor; border-radius: .5rem; margin: 1rem 0; padding: 1rem; }
+button, input { font: inherit; margin-top: .5rem; }
+pre { overflow-wrap: anywhere; white-space: pre-wrap; }
