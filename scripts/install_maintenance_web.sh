@@ -194,7 +194,14 @@ ensure_caddy_import() {
     [[ -e "$target" ]] || : > "$target"
   fi
   [[ -f "$target" ]] || die "missing Caddyfile: $target"
-  if ! grep -Fqx 'import Caddyfile.d/*' "$target"; then
+  if grep -Fqx '# The Caddyfile is an easy way to configure your Caddy web server.' "$target" \
+    && grep -Fqx ':80 {' "$target" \
+    && grep -Fqx $'\troot * /usr/share/caddy' "$target" \
+    && grep -Fqx $'\tfile_server' "$target"; then
+    # The packaged example binds :80, which conflicts with Pi-hole. It has no
+    # user configuration, so replace it with the dedicated snippets import.
+    printf 'import Caddyfile.d/*\n' > "$target"
+  elif ! grep -Fqx 'import Caddyfile.d/*' "$target"; then
     printf '\nimport Caddyfile.d/*\n' >> "$target"
   fi
   if [[ -n "$DESTDIR" ]]; then

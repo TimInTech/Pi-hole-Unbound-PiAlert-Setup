@@ -6,8 +6,9 @@ DESTDIR="$(mktemp -d)"
 GUARD_DIR="$(mktemp -d)"
 UNSAFE_DESTDIR="$(mktemp -d)"
 VENV_TEST_ROOT="$(mktemp -d)"
+PACKAGED_DESTDIR="$(mktemp -d)"
 GUARD_LOG="$DESTDIR/forbidden-actions.log"
-trap 'rm -rf -- "$DESTDIR" "$GUARD_DIR" "$UNSAFE_DESTDIR" "$VENV_TEST_ROOT"' EXIT
+trap 'rm -rf -- "$DESTDIR" "$GUARD_DIR" "$UNSAFE_DESTDIR" "$VENV_TEST_ROOT" "$PACKAGED_DESTDIR"' EXIT
 
 # A staged install must never touch packages, networking, or live services.
 for command in apt apt-get caddy curl service sudo systemctl; do
@@ -25,6 +26,18 @@ run_staged_install
 second_tree="$({ cd "$DESTDIR" && find . -type f -print0 | sort -z | xargs -0 sha256sum; })"
 test "$first_tree" = "$second_tree"
 test ! -s "$GUARD_LOG"
+
+# The packaged Caddy sample binds :80 and must be replaced, not imported.
+mkdir -p "$PACKAGED_DESTDIR/etc/caddy"
+printf '%s\n' \
+  '# The Caddyfile is an easy way to configure your Caddy web server.' \
+  ':80 {' \
+  $'\troot * /usr/share/caddy' \
+  $'\tfile_server' \
+  '}' > "$PACKAGED_DESTDIR/etc/caddy/Caddyfile"
+PATH="$GUARD_DIR:$PATH" bash "$ROOT_DIR/scripts/install_maintenance_web.sh" --destdir "$PACKAGED_DESTDIR"
+grep -Fqx 'import Caddyfile.d/*' "$PACKAGED_DESTDIR/etc/caddy/Caddyfile"
+! grep -Fqx ':80 {' "$PACKAGED_DESTDIR/etc/caddy/Caddyfile"
 
 # A compromised prior app tree must not redirect a root-owned installation.
 mkdir -p "$UNSAFE_DESTDIR/var/lib/pihole-suite/app"
