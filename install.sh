@@ -64,6 +64,7 @@ FORCE=false
 AUTO_REMOVE_CONFLICTS=false
 INSTALL_NETALERTX=false
 INSTALL_PYTHON_SUITE=true
+INSTALL_MAINTENANCE_WEB=false
 
 # Ports
 UNBOUND_PORT=5335
@@ -300,7 +301,9 @@ parse_args() {
       --install-netalertx|--with-netalertx) INSTALL_NETALERTX=true ;;
       --skip-netalertx) INSTALL_NETALERTX=false ;;
       --skip-python-api) INSTALL_PYTHON_SUITE=false ;;
-      --minimal) INSTALL_NETALERTX=false; INSTALL_PYTHON_SUITE=false ;;
+      --with-maintenance-web) INSTALL_MAINTENANCE_WEB=true ;;
+      --skip-maintenance-web) INSTALL_MAINTENANCE_WEB=false ;;
+      --minimal) INSTALL_NETALERTX=false; INSTALL_PYTHON_SUITE=false; INSTALL_MAINTENANCE_WEB=false ;;
       *) log_error "Unknown option: $1"; exit 1 ;;
     esac
     shift
@@ -1089,7 +1092,35 @@ setup_netalertx() {
 # =============================================
 # PYTHON SUITE SETUP
 # =============================================
+install_python_suite_app_files() {
+  local suite_app_dir="$STATE_DIR/app"
+  local source_file relative_file
+  local -a app_files=(
+    "start_suite.py"
+    "maintenance_web.py"
+    "web/maintenance.html"
+    "web/maintenance.css"
+    "web/maintenance.js"
+  )
+
+  sudo install -d -o root -g root -m 0755 "$STATE_DIR" "$suite_app_dir" "$suite_app_dir/web"
+  for relative_file in "${app_files[@]}"; do
+    source_file="$SCRIPT_DIR/$relative_file"
+    [[ -f "$source_file" && ! -L "$source_file" ]] || {
+      log_error "Required Python Suite app file missing or unsafe: $source_file"
+      exit 1
+    }
+    sudo install -o root -g root -m 0644 "$source_file" "$suite_app_dir/$relative_file"
+  done
+}
+
 setup_python_suite() {
+  if ! $DRY_RUN; then
+    # start_suite.py imports maintenance_web unconditionally. Keep the complete
+    # app tree installed even when privileged maintenance exposure stays off.
+    install_python_suite_app_files
+  fi
+
   if [[ "$PY_SUITE_OK" == true && "$FORCE" != true ]]; then
     if [[ "$CONTAINER_MODE" == false ]] && command -v systemctl >/dev/null 2>&1; then
       local py_state
@@ -1115,35 +1146,31 @@ setup_python_suite() {
 
     ensure_suite_env_file "$suite_data_dir"
 
-    # Keep a stable, system-accessible copy of the suite code under $STATE_DIR.
-    sudo mkdir -p "$suite_app_dir" 2>/dev/null || true
-    if [[ -f "$SCRIPT_DIR/start_suite.py" ]]; then
-      sudo install -m 0644 "$SCRIPT_DIR/start_suite.py" "$suite_entrypoint"
-    else
-      log_warning "Python Suite entrypoint missing at $SCRIPT_DIR/start_suite.py (service may fail to start)"
-    fi
-
     if ! getent group "$suite_group" >/dev/null 2>&1; then
       sudo groupadd --system "$suite_group"
     fi
     if ! id -u "$suite_user" >/dev/null 2>&1; then
       sudo useradd --system --no-create-home --shell /usr/sbin/nologin --gid "$suite_group" "$suite_user"
     fi
-    sudo mkdir -p "$suite_state_dir"
+    sudo install -d -o root -g root -m 0755 "$suite_state_dir"
+    sudo install -d -o root -g "$suite_group" -m 0750 "$suite_data_dir" "$suite_state_dir/jobs"
+    sudo install -d -o root -g "$suite_group" -m 0770 "$suite_state_dir/sessions"
 
     ensure_python_venv "$suite_venv_dir"
     "$suite_venv_dir/bin/pip" install -r "$SCRIPT_DIR/requirements.txt" || {
       log_error "Python requirements failed"; exit 1;
     }
-    sudo chown -R "$suite_user":"$suite_group" "$suite_data_dir" "$suite_app_dir" "$suite_venv_dir" "$suite_state_dir" 2>/dev/null || true
+    sudo chown -R root:root "$suite_app_dir" "$suite_venv_dir"
+    sudo chmod 0755 "$suite_state_dir" "$suite_app_dir" "$suite_app_dir/web" "$suite_venv_dir"
+    sudo chown root:"$suite_group" "$suite_data_dir" "$suite_state_dir/jobs" "$suite_state_dir/sessions"
+    sudo chmod 0750 "$suite_data_dir" "$suite_state_dir/jobs"
+    sudo chmod 0770 "$suite_state_dir/sessions"
     sudo chown root:"$suite_group" "$ENV_FILE"
     sudo chmod 640 "$ENV_FILE"
     [[ -f "$suite_entrypoint" ]] || log_warning "Python Suite entrypoint missing at $suite_entrypoint (service may need code before start)"
 
     if [[ "$CONTAINER_MODE" == false ]]; then
       local protect_home_value="true"
-
-      local read_write_paths="$suite_state_dir"
 
       local tmp_unit
       tmp_unit="$(mktemp)"
@@ -1161,10 +1188,10 @@ Restart=always
 RestartSec=3
 UMask=027
 RuntimeDirectory=pihole-suite
-StateDirectory=pihole-suite
 LogsDirectory=pihole-suite
 CacheDirectory=pihole-suite
-ReadWritePaths=$read_write_paths
+ReadOnlyPaths=$suite_app_dir $suite_venv_dir $suite_state_dir/jobs
+ReadWritePaths=$suite_data_dir $suite_state_dir/sessions
 PrivateTmp=true
 PrivateDevices=true
 NoNewPrivileges=true
@@ -1265,6 +1292,14 @@ run_healthchecks() {
 # =============================================
 main() {
   parse_args "$@"
+  if [[ "$INSTALL_MAINTENANCE_WEB" == true && "$INSTALL_PYTHON_SUITE" != true ]]; then
+    log_error "--with-maintenance-web requires the Python API Suite"
+    exit 1
+  fi
+  if [[ "$INSTALL_MAINTENANCE_WEB" == true && "$CONTAINER_MODE" == true ]]; then
+    log_error "--with-maintenance-web is supported only in host mode"
+    exit 1
+  fi
   init_runtime_paths
   init_state
   validate_state_against_system
@@ -1290,6 +1325,16 @@ main() {
   else
     log "⏭️  Skipping Python API Suite installation (--skip-python-api)"
     update_state PY_SUITE_OK true
+  fi
+
+  if [[ "$INSTALL_MAINTENANCE_WEB" == true ]]; then
+    if [[ "$DRY_RUN" == true ]]; then
+      log "DRY RUN: Would install privileged maintenance web exposure"
+    else
+      "$SCRIPT_DIR/scripts/install_maintenance_web.sh"
+    fi
+  else
+    log "⏭️  Skipping privileged maintenance web exposure (default; use --with-maintenance-web)"
   fi
   
   configure_local_dns_resolver

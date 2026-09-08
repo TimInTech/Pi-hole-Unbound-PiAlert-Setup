@@ -1,0 +1,260 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+SOURCE_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+DESTDIR=""
+
+readonly DEPLOY_BACKUP_ROOT="/var/backups/pihole-suite-deploy"
+readonly APP_DIR="/var/lib/pihole-suite/app"
+readonly RUNNER_TARGET="/usr/local/libexec/pihole-maintenance-runner"
+readonly ROLLBACK_TARGET="/usr/local/sbin/pihole-maintenance-web-rollback"
+readonly CADDY_MAIN_TARGET="/etc/caddy/Caddyfile"
+readonly CADDY_TARGET="/etc/caddy/Caddyfile.d/pihole-maintenance.caddy"
+readonly SUDOERS_TARGET="/etc/sudoers.d/pihole-maintenance-web"
+
+readonly -a TARGETS=(
+  "/etc/systemd/system/pihole-maintenance-check.service"
+  "/etc/systemd/system/pihole-maintenance-backup.service"
+  "/etc/systemd/system/pihole-maintenance-update.service"
+  "$SUDOERS_TARGET"
+  "$CADDY_MAIN_TARGET"
+  "$CADDY_TARGET"
+  "$RUNNER_TARGET"
+  "$ROLLBACK_TARGET"
+  "$APP_DIR/start_suite.py"
+  "$APP_DIR/maintenance_web.py"
+  "$APP_DIR/web/maintenance.html"
+  "$APP_DIR/web/maintenance.css"
+  "$APP_DIR/web/maintenance.js"
+)
+
+usage() {
+  printf '%s\n' "Usage: $0 [--destdir ABSOLUTE_PATH]"
+}
+
+die() {
+  printf 'maintenance web installer: %s\n' "$*" >&2
+  exit 1
+}
+
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --destdir)
+        [[ $# -ge 2 ]] || die "--destdir requires a path"
+        DESTDIR="$2"
+        shift 2
+        ;;
+      --help|-h)
+        usage
+        exit 0
+        ;;
+      *) die "unknown option: $1" ;;
+    esac
+  done
+  if [[ -n "$DESTDIR" ]]; then
+    [[ "$DESTDIR" = /* && "$DESTDIR" != "/" ]] || die "DESTDIR must be a non-root absolute path"
+    [[ ! -L "$DESTDIR" ]] || die "DESTDIR must not be a symlink"
+    mkdir -p -- "$DESTDIR"
+  fi
+}
+
+destination() {
+  local target="$1"
+  if [[ -n "$DESTDIR" ]]; then
+    printf '%s%s\n' "$DESTDIR" "$target"
+  else
+    printf '%s\n' "$target"
+  fi
+}
+
+assert_safe_parent_chain() {
+  local path
+  path="$(dirname -- "$1")"
+  while [[ "$path" != "/" && "$path" != "." ]]; do
+    [[ ! -L "$path" ]] || die "refusing symlinked parent directory: $path"
+    path="$(dirname -- "$path")"
+  done
+}
+
+source_for_target() {
+  case "$1" in
+    /etc/systemd/system/pihole-maintenance-check.service) printf '%s\n' "$SOURCE_DIR/deploy/pihole-maintenance-check.service" ;;
+    /etc/systemd/system/pihole-maintenance-backup.service) printf '%s\n' "$SOURCE_DIR/deploy/pihole-maintenance-backup.service" ;;
+    /etc/systemd/system/pihole-maintenance-update.service) printf '%s\n' "$SOURCE_DIR/deploy/pihole-maintenance-update.service" ;;
+    "$SUDOERS_TARGET") printf '%s\n' "$SOURCE_DIR/deploy/pihole-maintenance-web.sudoers" ;;
+    "$CADDY_MAIN_TARGET") die "Caddy main configuration is generated, not copied" ;;
+    "$CADDY_TARGET") printf '%s\n' "$SOURCE_DIR/deploy/Caddyfile.maintenance" ;;
+    "$RUNNER_TARGET") printf '%s\n' "$SOURCE_DIR/maintenance_runner.py" ;;
+    "$ROLLBACK_TARGET") printf '%s\n' "$SOURCE_DIR/scripts/rollback_maintenance_web.sh" ;;
+    "$APP_DIR/start_suite.py") printf '%s\n' "$SOURCE_DIR/start_suite.py" ;;
+    "$APP_DIR/maintenance_web.py") printf '%s\n' "$SOURCE_DIR/maintenance_web.py" ;;
+    "$APP_DIR/web/maintenance.html") printf '%s\n' "$SOURCE_DIR/web/maintenance.html" ;;
+    "$APP_DIR/web/maintenance.css") printf '%s\n' "$SOURCE_DIR/web/maintenance.css" ;;
+    "$APP_DIR/web/maintenance.js") printf '%s\n' "$SOURCE_DIR/web/maintenance.js" ;;
+    *) die "internal unexpected target: $1" ;;
+  esac
+}
+
+mode_for_target() {
+  case "$1" in
+    "$RUNNER_TARGET"|"$ROLLBACK_TARGET") printf '%s\n' 0755 ;;
+    "$SUDOERS_TARGET") printf '%s\n' 0440 ;;
+    *) printf '%s\n' 0644 ;;
+  esac
+}
+
+install_target() {
+  local target="$1" source mode installed_target
+  source="$(source_for_target "$target")"
+  mode="$(mode_for_target "$target")"
+  installed_target="$(destination "$target")"
+  [[ -f "$source" && ! -L "$source" ]] || die "unsafe or missing source: $source"
+  assert_safe_parent_chain "$installed_target"
+  [[ ! -L "$installed_target" ]] || die "refusing to replace symlink: $installed_target"
+  mkdir -p -- "$(dirname -- "$installed_target")"
+  if [[ -n "$DESTDIR" ]]; then
+    install -m "$mode" -- "$source" "$installed_target"
+  else
+    install -o root -g root -m "$mode" -- "$source" "$installed_target"
+  fi
+}
+
+prepare_runtime_directories() {
+  if [[ -n "$DESTDIR" ]]; then
+    assert_safe_parent_chain "$(destination /usr/local/libexec)/.guard"
+    assert_safe_parent_chain "$(destination "$APP_DIR")/.guard"
+    assert_safe_parent_chain "$(destination "$APP_DIR/web")/.guard"
+    [[ ! -L "$(destination "$APP_DIR/web")" ]] || die "refusing symlinked app web directory"
+    install -d -m 0755 "$(destination /usr/local/libexec)" "$(destination "$APP_DIR")" "$(destination "$APP_DIR/web")"
+    install -d -m 0750 "$(destination /var/lib/pihole-suite/jobs)"
+    install -d -m 0770 "$(destination /var/lib/pihole-suite/sessions)"
+    install -d -m 0700 "$(destination /var/backups/pihole-suite)" "$(destination "$DEPLOY_BACKUP_ROOT")"
+    return
+  fi
+  getent group pihole-suite >/dev/null || die "required group pihole-suite does not exist"
+  id -u pihole-suite >/dev/null || die "required user pihole-suite does not exist"
+  assert_safe_parent_chain "$APP_DIR/.guard"
+  assert_safe_parent_chain "$APP_DIR/web/.guard"
+  [[ ! -L "$APP_DIR/web" ]] || die "refusing symlinked app web directory"
+  install -d -o root -g root -m 0755 /usr/local/libexec "$APP_DIR" "$APP_DIR/web"
+  install -d -o root -g pihole-suite -m 0750 /var/lib/pihole-suite/jobs
+  install -d -o root -g pihole-suite -m 0770 /var/lib/pihole-suite/sessions
+  install -d -o root -g root -m 0700 /var/backups/pihole-suite "$DEPLOY_BACKUP_ROOT"
+}
+
+backup_target() {
+  local target="$1" backup_dir="$2" index="$3" backup_file mode uid gid digest
+  assert_safe_parent_chain "$target"
+  [[ ! -L "$target" ]] || die "refusing to backup symlink: $target"
+  backup_file="files/$index"
+  if [[ -e "$target" ]]; then
+    [[ -f "$target" ]] || die "refusing to backup non-regular artifact: $target"
+    install -d -o root -g root -m 0700 "$backup_dir/files"
+    cp --preserve=mode,ownership,timestamps -- "$target" "$backup_dir/$backup_file"
+    mode="$(stat -c '%a' -- "$target")"
+    uid="$(stat -c '%u' -- "$target")"
+    gid="$(stat -c '%g' -- "$target")"
+    digest="$(sha256sum -- "$target" | awk '{print $1}')"
+    printf '%s|present|%s|%s|%s|%s|%s\n' "$target" "$backup_file" "$mode" "$uid" "$gid" "$digest" >> "$backup_dir/manifest.tsv"
+  else
+    printf '%s|absent|-|-|-|-\n' "$target" >> "$backup_dir/manifest.tsv"
+  fi
+}
+
+ensure_caddy_import() {
+  local target
+  target="$(destination "$CADDY_MAIN_TARGET")"
+  assert_safe_parent_chain "$target"
+  [[ ! -L "$target" ]] || die "refusing to modify symlinked Caddyfile"
+  if [[ -n "$DESTDIR" ]]; then
+    mkdir -p -- "$(dirname -- "$target")"
+    [[ -e "$target" ]] || : > "$target"
+  fi
+  [[ -f "$target" ]] || die "missing Caddyfile: $target"
+  if ! grep -Fqx 'import Caddyfile.d/*' "$target"; then
+    printf '\nimport Caddyfile.d/*\n' >> "$target"
+  fi
+  if [[ -n "$DESTDIR" ]]; then
+    chmod 0644 -- "$target"
+  else
+    chown root:root -- "$target"
+    chmod 0644 -- "$target"
+  fi
+}
+
+create_deployment_backup() {
+  local backup_dir index=0 target timestamp
+  timestamp="$(date -u +%Y%m%dT%H%M%SZ)-$$"
+  backup_dir="$DEPLOY_BACKUP_ROOT/$timestamp"
+  (umask 077 && mkdir -- "$backup_dir")
+  chown root:root -- "$backup_dir"
+  chmod 0700 -- "$backup_dir"
+  printf 'version|1\n' > "$backup_dir/manifest.tsv"
+  chmod 0600 -- "$backup_dir/manifest.tsv"
+  for target in "${TARGETS[@]}"; do
+    index=$((index + 1))
+    backup_target "$target" "$backup_dir" "$index"
+  done
+  printf '%s\n' "$backup_dir"
+}
+
+validate_live_installation() {
+  /usr/bin/python3 -m py_compile "$RUNNER_TARGET" "$APP_DIR/start_suite.py" "$APP_DIR/maintenance_web.py"
+  /usr/sbin/visudo -cf "$SUDOERS_TARGET"
+  /usr/bin/systemd-analyze verify \
+    /etc/systemd/system/pihole-maintenance-check.service \
+    /etc/systemd/system/pihole-maintenance-backup.service \
+    /etc/systemd/system/pihole-maintenance-update.service
+  /usr/bin/caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+}
+
+activate_live_installation() {
+  /usr/bin/systemctl daemon-reload
+  /usr/bin/systemctl enable --now caddy
+  /usr/bin/systemctl reload caddy
+  /usr/bin/systemctl restart pihole-suite.service
+  /usr/bin/systemctl is-active --quiet pihole-suite.service
+  /usr/bin/curl --fail --silent --show-error --max-time 10 http://127.0.0.1:8090/ >/dev/null
+}
+
+install_live() {
+  [[ ${EUID:-$(id -u)} -eq 0 ]] || die "live installation must run as root"
+  [[ -x /usr/bin/caddy ]] || die "Caddy must already be installed at /usr/bin/caddy"
+  [[ -f /etc/caddy/Caddyfile ]] || die "missing /etc/caddy/Caddyfile"
+  for command in /usr/bin/python3 /usr/sbin/visudo /usr/bin/systemd-analyze /usr/bin/systemctl /usr/bin/curl; do
+    [[ -x "$command" ]] || die "required command unavailable: $command"
+  done
+  prepare_runtime_directories
+  create_deployment_backup >/dev/null
+  ensure_caddy_import
+  local target
+  for target in "${TARGETS[@]}"; do
+    [[ "$target" == "$CADDY_MAIN_TARGET" ]] && continue
+    install_target "$target"
+  done
+  validate_live_installation
+  activate_live_installation
+}
+
+install_staged() {
+  local target
+  prepare_runtime_directories
+  ensure_caddy_import
+  for target in "${TARGETS[@]}"; do
+    [[ "$target" == "$CADDY_MAIN_TARGET" ]] && continue
+    install_target "$target"
+  done
+}
+
+main() {
+  parse_args "$@"
+  if [[ -n "$DESTDIR" ]]; then
+    install_staged
+    return
+  fi
+  install_live
+}
+
+main "$@"

@@ -1,0 +1,3 @@
+pihole-suite ALL=(root) NOPASSWD: /usr/bin/systemctl start --no-block pihole-maintenance-check.service
+pihole-suite ALL=(root) NOPASSWD: /usr/bin/systemctl start --no-block pihole-maintenance-backup.service
+pihole-suite ALL=(root) NOPASSWD: /usr/bin/systemctl start --no-block pihole-maintenance-update.service
