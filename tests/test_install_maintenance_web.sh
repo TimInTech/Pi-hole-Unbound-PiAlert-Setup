@@ -152,6 +152,7 @@ grep -Fq 'install -o root -g root -m 0644' "$ROOT_DIR/install.sh"
 grep -Fq 'scripts/install_maintenance_web.sh' "$ROOT_DIR/install.sh"
 grep -Fq 'DRY RUN: Would install privileged maintenance web exposure' "$ROOT_DIR/install.sh"
 grep -Fq 'sudo install -d -o root -g root -m 0755 "$STATE_DIR"' "$ROOT_DIR/install.sh"
+grep -Fq 'NoNewPrivileges=false' "$ROOT_DIR/install.sh"
 test -x "$ROOT_DIR/scripts/install_maintenance_web.sh"
 test -x "$ROOT_DIR/scripts/rollback_maintenance_web.sh"
 

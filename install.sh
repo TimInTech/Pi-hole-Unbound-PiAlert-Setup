@@ -1227,7 +1227,9 @@ ReadOnlyPaths=$suite_app_dir $suite_venv_dir $suite_state_dir/jobs
 ReadWritePaths=$suite_data_dir $suite_state_dir/sessions
 PrivateTmp=true
 PrivateDevices=true
-NoNewPrivileges=true
+# The fixed, exact sudoers allow-list starts the three root-owned maintenance
+# units. NoNewPrivileges would disable sudo's required privilege transition.
+NoNewPrivileges=false
 ProtectSystem=strict
 ProtectHome=$protect_home_value
 ProtectKernelTunables=true
