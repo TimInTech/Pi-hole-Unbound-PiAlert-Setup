@@ -185,7 +185,7 @@ backup_target() {
 }
 
 ensure_caddy_import() {
-  local target
+  local target nonempty_config
   target="$(destination "$CADDY_MAIN_TARGET")"
   assert_safe_parent_chain "$target"
   [[ ! -L "$target" ]] || die "refusing to modify symlinked Caddyfile"
@@ -194,13 +194,15 @@ ensure_caddy_import() {
     [[ -e "$target" ]] || : > "$target"
   fi
   [[ -f "$target" ]] || die "missing Caddyfile: $target"
+  nonempty_config="$(sed '/^[[:space:]]*$/d' "$target")"
   if grep -Fqx '# The Caddyfile is an easy way to configure your Caddy web server.' "$target" \
     && grep -Fqx ':80 {' "$target" \
     && grep -Fqx $'\troot * /usr/share/caddy' "$target" \
-    && grep -Fqx $'\tfile_server' "$target"; then
+    && grep -Fqx $'\tfile_server' "$target" \
+    || [[ -z "$nonempty_config" || "$nonempty_config" == 'import Caddyfile.d/*' ]]; then
     # The packaged example binds :80, which conflicts with Pi-hole. It has no
     # user configuration, so replace it with the dedicated snippets import.
-    printf 'import Caddyfile.d/*\n' > "$target"
+    printf '{\n    auto_https disable_redirects\n}\n\nimport Caddyfile.d/*\n' > "$target"
   elif ! grep -Fqx 'import Caddyfile.d/*' "$target"; then
     printf '\nimport Caddyfile.d/*\n' >> "$target"
   fi

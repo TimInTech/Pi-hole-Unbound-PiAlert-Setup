@@ -37,6 +37,7 @@ printf '%s\n' \
   '}' > "$PACKAGED_DESTDIR/etc/caddy/Caddyfile"
 PATH="$GUARD_DIR:$PATH" bash "$ROOT_DIR/scripts/install_maintenance_web.sh" --destdir "$PACKAGED_DESTDIR"
 grep -Fqx 'import Caddyfile.d/*' "$PACKAGED_DESTDIR/etc/caddy/Caddyfile"
+grep -Fqx '    auto_https disable_redirects' "$PACKAGED_DESTDIR/etc/caddy/Caddyfile"
 ! grep -Fqx ':80 {' "$PACKAGED_DESTDIR/etc/caddy/Caddyfile"
 
 # A compromised prior app tree must not redirect a root-owned installation.
