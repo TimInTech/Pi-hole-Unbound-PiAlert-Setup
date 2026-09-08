@@ -250,13 +250,22 @@ validate_live_installation() {
 }
 
 activate_live_installation() {
+  local attempt listeners
   /usr/bin/systemctl daemon-reload
   /usr/bin/systemctl enable --now caddy
   /usr/bin/systemctl reload caddy
   /usr/bin/systemctl restart pihole-suite.service
   /usr/bin/systemctl is-active --quiet pihole-suite.service
-  /usr/bin/ss -ltnp '( sport = :8090 )' | /usr/bin/grep -Fq '127.0.0.1:8090' || die "pihole-suite is not listening only on 127.0.0.1:8090"
-  ! /usr/bin/ss -ltnp '( sport = :8090 )' | /usr/bin/grep -Eq '(0\.0\.0\.0|\[::\]):8090' || die "pihole-suite exposed port 8090 outside loopback"
+  for attempt in {1..15}; do
+    listeners="$(/usr/bin/ss -H -ltnp '( sport = :8090 )')"
+    if printf '%s\n' "$listeners" | /usr/bin/grep -Fq '127.0.0.1:8090'; then
+      break
+    fi
+    sleep 1
+  done
+  [[ -n "$listeners" ]] || die "pihole-suite is not listening only on 127.0.0.1:8090"
+  printf '%s\n' "$listeners" | /usr/bin/grep -Fq '127.0.0.1:8090' || die "pihole-suite is not listening only on 127.0.0.1:8090"
+  ! printf '%s\n' "$listeners" | /usr/bin/grep -Eq '(0\.0\.0\.0|\[::\]):8090' || die "pihole-suite exposed port 8090 outside loopback"
   /usr/bin/curl --fail --silent --show-error --max-time 10 http://127.0.0.1:8090/ >/dev/null
 }
 
