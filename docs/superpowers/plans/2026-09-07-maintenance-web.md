@@ -222,4 +222,3 @@ grep -F "/usr/bin/systemctl start --no-block pihole-maintenance-update.service" 
 - [ ] **Step 9: Append the final architecture, verified production state, exact rollback point, and genuine blockers to the existing Vault handover. Run diff checks, secret scan, and the canonical Vault sync helper.**
 
 - [ ] **Step 10: Commit documentation as docs: document maintenance web operations and record exact acceptance evidence. Mark complete only when every spec criterion has current direct evidence.**
-

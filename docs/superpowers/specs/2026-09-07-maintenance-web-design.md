@@ -178,4 +178,3 @@ werden durch Rollback nicht gelöscht.
 7. Gleichzeitige zweite Jobstarts werden mit HTTP 409 abgewiesen.
 8. Nach allen Tests sind `pihole-FTL`, `unbound`, `pihole-suite` und `caddy`
    aktiv; DNS über Port 53 und 5335 funktioniert.
-
