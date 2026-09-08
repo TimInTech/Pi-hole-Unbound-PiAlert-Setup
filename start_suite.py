@@ -331,6 +331,8 @@ def stats() -> dict[str, Any]:
 def main() -> None:
     port = int(_env("SUITE_PORT", default="8090"))
     host = _env("SUITE_HOST", default="127.0.0.1")
+    if host != "127.0.0.1":
+        raise RuntimeError("SUITE_HOST must be 127.0.0.1 for the maintenance web service")
     uvicorn.run(app, host=host, port=port, log_level=os.getenv("SUITE_LOG_LEVEL", "info").lower())
 
 

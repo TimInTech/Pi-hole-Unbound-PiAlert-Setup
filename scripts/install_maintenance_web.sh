@@ -216,6 +216,8 @@ activate_live_installation() {
   /usr/bin/systemctl reload caddy
   /usr/bin/systemctl restart pihole-suite.service
   /usr/bin/systemctl is-active --quiet pihole-suite.service
+  /usr/bin/ss -ltnp '( sport = :8090 )' | /usr/bin/grep -Fq '127.0.0.1:8090' || die "pihole-suite is not listening only on 127.0.0.1:8090"
+  ! /usr/bin/ss -ltnp '( sport = :8090 )' | /usr/bin/grep -Eq '(0\.0\.0\.0|\[::\]):8090' || die "pihole-suite exposed port 8090 outside loopback"
   /usr/bin/curl --fail --silent --show-error --max-time 10 http://127.0.0.1:8090/ >/dev/null
 }
 
@@ -223,7 +225,7 @@ install_live() {
   [[ ${EUID:-$(id -u)} -eq 0 ]] || die "live installation must run as root"
   [[ -x /usr/bin/caddy ]] || die "Caddy must already be installed at /usr/bin/caddy"
   [[ -f /etc/caddy/Caddyfile ]] || die "missing /etc/caddy/Caddyfile"
-  for command in /usr/bin/python3 /usr/sbin/visudo /usr/bin/systemd-analyze /usr/bin/systemctl /usr/bin/curl; do
+  for command in /usr/bin/python3 /usr/sbin/visudo /usr/bin/systemd-analyze /usr/bin/systemctl /usr/bin/curl /usr/bin/ss /usr/bin/grep; do
     [[ -x "$command" ]] || die "required command unavailable: $command"
   done
   prepare_runtime_directories

@@ -347,16 +347,26 @@ def test_job_state_persists_only_allowlisted_structured_command_results(tmp_path
         assert set(step) <= {"name", "required", "ok", "detail"}
 
 
-def test_update_uses_long_timeouts_while_final_check_uses_short_timeouts(tmp_path):
+def test_update_uses_a_bounded_job_timeout_while_final_check_uses_short_timeouts(tmp_path):
     context, commands = make_context(tmp_path)
 
     assert run_job("update", context)["state"] == "succeeded"
 
     timeouts_by_command = dict(zip((tuple(call) for call in commands.calls), commands.timeouts, strict=True))
-    assert timeouts_by_command[("/usr/bin/apt-get", "update")] == 7200
-    assert timeouts_by_command[("/usr/bin/apt-get", "-y", "upgrade")] == 7200
-    assert timeouts_by_command[(context.pihole_bin, "-up")] == 7200
+    assert timeouts_by_command[("/usr/bin/apt-get", "update")] <= maintenance_runner.UPDATE_JOB_TIMEOUT_SECONDS
+    assert timeouts_by_command[("/usr/bin/apt-get", "-y", "upgrade")] <= maintenance_runner.UPDATE_JOB_TIMEOUT_SECONDS
+    assert timeouts_by_command[(context.pihole_bin, "-up")] <= maintenance_runner.UPDATE_JOB_TIMEOUT_SECONDS
     assert timeouts_by_command[("/usr/bin/dig", "+short", "@127.0.0.1", "example.com", "+time=3", "+tries=1")] == 30
+
+
+def test_update_reduces_later_command_timeout_to_fit_job_deadline(tmp_path, monkeypatch):
+    context, commands = make_context(tmp_path)
+    monotonic_values = iter((0.0, 0.0, 120.0, 240.0, 360.0))
+    monkeypatch.setattr(maintenance_runner.time, "monotonic", lambda: next(monotonic_values))
+
+    assert run_job("update", context)["state"] == "succeeded"
+
+    assert commands.timeouts[:4] == [6600, 6480, 6360, 6240]
 
 
 def test_timed_out_command_terminates_its_entire_process_group(tmp_path, monkeypatch):

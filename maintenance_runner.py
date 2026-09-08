@@ -18,6 +18,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -27,7 +28,9 @@ from typing import Any, Callable, Sequence
 STATE_FILE_MODE = 0o640
 BACKUP_DIR_MODE = 0o700
 CHECK_COMMAND_TIMEOUT_SECONDS = 30
-UPDATE_COMMAND_TIMEOUT_SECONDS = 7_200
+# The unit permits 7,200 seconds. Keep a ten-minute reserve for a clean failure
+# state and the required final health check before systemd can terminate us.
+UPDATE_JOB_TIMEOUT_SECONDS = 6_600
 PROCESS_TERMINATION_GRACE_SECONDS = 5
 
 
@@ -437,6 +440,7 @@ def _run_backup(context: RunnerContext, job_id: str) -> tuple[list[dict[str, Any
 
 
 def _run_update(context: RunnerContext, job_id: str) -> tuple[list[dict[str, Any]], str | None, str | None]:
+    deadline = time.monotonic() + UPDATE_JOB_TIMEOUT_SECONDS
     steps, error, backup_path = _run_backup(context, job_id)
     if error:
         return steps, error, backup_path
@@ -446,7 +450,8 @@ def _run_update(context: RunnerContext, job_id: str) -> tuple[list[dict[str, Any
         ("pihole_update", [context.pihole_bin, "-up"]),
         ("pihole_gravity", [context.pihole_bin, "-g"]),
     ):
-        step, _ = _command_step(name, argv, context, timeout_seconds=UPDATE_COMMAND_TIMEOUT_SECONDS)
+        remaining_seconds = max(1, int(deadline - time.monotonic()))
+        step, _ = _command_step(name, argv, context, timeout_seconds=remaining_seconds)
         steps.append(step)
         if not step["ok"]:
             return steps, "update_failed", backup_path

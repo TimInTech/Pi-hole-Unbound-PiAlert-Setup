@@ -362,3 +362,13 @@ def test_suite_keeps_the_legacy_monitoring_api(monkeypatch: pytest.MonkeyPatch):
         route.path for route in suite.app.routes if hasattr(route, "path")
     }
     assert suite_client.get("/health", headers={"X-API-Key": "correct horse battery staple"}).status_code == 200
+
+
+def test_suite_rejects_a_non_loopback_bind_host(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("SUITE_API_KEY", "correct horse battery staple")
+    monkeypatch.setenv("SUITE_HOST", "0.0.0.0")
+    sys.modules.pop("start_suite", None)
+    suite = importlib.import_module("start_suite")
+
+    with pytest.raises(RuntimeError, match="SUITE_HOST must be 127.0.0.1"):
+        suite.main()
