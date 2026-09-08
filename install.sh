@@ -1137,6 +1137,9 @@ install_python_suite_app_files() {
   )
 
   assert_no_symlink_in_path "$STATE_DIR" || exit 1
+  # Claim the legacy state parent before examining a service-owned child, so
+  # the service account cannot race this privileged migration.
+  sudo install -d -o root -g root -m 0755 "$STATE_DIR"
   assert_no_symlink_in_path "$suite_app_dir" || exit 1
   # The old installer made this code directory service-writable. Remove that
   # legacy tree instead of following or reusing it during a privileged upgrade.
@@ -1160,16 +1163,9 @@ setup_python_suite() {
   fi
 
   if [[ "$PY_SUITE_OK" == true && "$FORCE" != true ]]; then
-    if [[ "$CONTAINER_MODE" == false ]] && command -v systemctl >/dev/null 2>&1; then
-      local py_state
-      py_state="$(systemctl is-active pihole-suite.service 2>/dev/null || true)"
-      if [[ "$py_state" == "active" ]]; then
-        log "✅ Python Suite OK"
-        return
-      fi
-    fi
-
-    # Stale state flag; force the step to run again.
+    # Always complete the one-time ownership and unit hardening migration.
+    # A running legacy service is not evidence that its venv is trustworthy.
+    log "Migrating Python Suite runtime to the hardened layout"
     update_state PY_SUITE_OK false
   fi
 
