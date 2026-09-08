@@ -151,17 +151,50 @@ ensure_suite_env_file() {
 }
 
 
-ensure_python_venv() {
-  # Ensure a working venv with an executable python at $venv_dir/bin/python
-  # Recreates the venv if python is missing (common after interrupted installs).
-  local venv_dir="$1"
-  [[ -z "$venv_dir" ]] && return 1
+assert_no_symlink_in_path() {
+  local path="$1"
+  [[ "$path" = /* ]] || {
+    log_error "Expected an absolute path: $path"
+    return 1
+  }
+  while [[ "$path" != "/" ]]; do
+    if sudo test -L "$path"; then
+      log_error "Refusing symlinked privileged path: $path"
+      return 1
+    fi
+    path="$(dirname -- "$path")"
+  done
+}
 
-  if [[ ! -x "$venv_dir/bin/python" ]]; then
-    log_warning "Python venv missing/broken at $venv_dir; recreating"
-    sudo rm -rf "$venv_dir" 2>/dev/null || true
-    python3 -m venv "$venv_dir"
+rebuild_python_venv() {
+  # Never execute a pre-existing virtualenv: older releases made it writable
+  # by the service account, so it is untrusted during an upgrade.
+  local venv_dir="$1"
+  local staging_dir previous_dir
+  [[ -z "$venv_dir" ]] && return 1
+  assert_no_symlink_in_path "$venv_dir" || return 1
+  previous_dir="${venv_dir}.previous"
+  assert_no_symlink_in_path "$previous_dir" || return 1
+
+  staging_dir="$(sudo mktemp -d "$(dirname -- "$venv_dir")/.venv-bootstrap.XXXXXX")" || return 1
+  if ! sudo /usr/bin/python3 -m venv "$staging_dir"; then
+    sudo rm -rf -- "$staging_dir"
+    return 1
   fi
+  if ! sudo "$staging_dir/bin/pip" install -r "$SCRIPT_DIR/requirements.txt"; then
+    sudo rm -rf -- "$staging_dir"
+    return 1
+  fi
+
+  if [[ -e "$previous_dir" ]]; then
+    sudo rm -rf -- "$previous_dir"
+  fi
+  if [[ -e "$venv_dir" ]]; then
+    sudo mv -- "$venv_dir" "$previous_dir"
+  fi
+  sudo mv -- "$staging_dir" "$venv_dir"
+  sudo chown -R root:root "$venv_dir"
+  sudo chmod 0755 "$venv_dir"
 }
 
 # =============================================
@@ -1103,6 +1136,11 @@ install_python_suite_app_files() {
     "web/maintenance.js"
   )
 
+  assert_no_symlink_in_path "$STATE_DIR" || exit 1
+  assert_no_symlink_in_path "$suite_app_dir" || exit 1
+  # The old installer made this code directory service-writable. Remove that
+  # legacy tree instead of following or reusing it during a privileged upgrade.
+  sudo rm -rf -- "$suite_app_dir"
   sudo install -d -o root -g root -m 0755 "$STATE_DIR" "$suite_app_dir" "$suite_app_dir/web"
   for relative_file in "${app_files[@]}"; do
     source_file="$SCRIPT_DIR/$relative_file"
@@ -1156,8 +1194,7 @@ setup_python_suite() {
     sudo install -d -o root -g "$suite_group" -m 0750 "$suite_data_dir" "$suite_state_dir/jobs"
     sudo install -d -o root -g "$suite_group" -m 0770 "$suite_state_dir/sessions"
 
-    ensure_python_venv "$suite_venv_dir"
-    "$suite_venv_dir/bin/pip" install -r "$SCRIPT_DIR/requirements.txt" || {
+    rebuild_python_venv "$suite_venv_dir" || {
       log_error "Python requirements failed"; exit 1;
     }
     sudo chown -R root:root "$suite_app_dir" "$suite_venv_dir"
@@ -1291,6 +1328,7 @@ run_healthchecks() {
 # MAIN
 # =============================================
 main() {
+  local maintenance_backup_dir=""
   parse_args "$@"
   if [[ "$INSTALL_MAINTENANCE_WEB" == true && "$INSTALL_PYTHON_SUITE" != true ]]; then
     log_error "--with-maintenance-web requires the Python API Suite"
@@ -1304,6 +1342,9 @@ main() {
   init_state
   validate_state_against_system
   check_dependencies
+  if [[ "$INSTALL_MAINTENANCE_WEB" == true && "$DRY_RUN" == false ]]; then
+    maintenance_backup_dir="$("$SCRIPT_DIR/scripts/install_maintenance_web.sh" --backup-only)"
+  fi
   handle_systemd_resolved
   check_ports
   install_packages
@@ -1331,7 +1372,7 @@ main() {
     if [[ "$DRY_RUN" == true ]]; then
       log "DRY RUN: Would install privileged maintenance web exposure"
     else
-      "$SCRIPT_DIR/scripts/install_maintenance_web.sh"
+      "$SCRIPT_DIR/scripts/install_maintenance_web.sh" --backup-dir "$maintenance_backup_dir"
     fi
   else
     log "⏭️  Skipping privileged maintenance web exposure (default; use --with-maintenance-web)"
@@ -1397,4 +1438,6 @@ main() {
   echo "  3. Monitor with: ./check.sh"
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

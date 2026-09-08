@@ -7,7 +7,8 @@ Produktionsabnahme unter `https://pi.hole:8443/` sowie
 
 ## Voraussetzungen und Installation
 
-Der Webdienst bleibt auf `127.0.0.1:8090`; Caddy veröffentlicht ausschließlich
+Der Webdienst bleibt verbindlich auf `127.0.0.1:8090`; ein abweichender
+`SUITE_HOST` wird beim Start abgewiesen. Caddy veröffentlicht ausschließlich
 HTTPS auf Port 8443 für `192.168.178.0/24` und Loopback. Für Caddy auf Debian
 oder Raspberry Pi OS ist das offizielle Stable-Repository zu verwenden:
 
@@ -102,8 +103,11 @@ dig +short @127.0.0.1 example.com
 dig +short @127.0.0.1 -p 5335 example.com
 ```
 
-Der Installer erzeugt vor dem Austausch ein root-eigenes Deployment-Backup
-unter `/var/backups/pihole-suite-deploy/`. Für einen Rollback zuerst den
+Der Installer erzeugt vor dem ersten Austausch der Suite-Dateien ein
+root-eigenes Deployment-Backup unter `/var/backups/pihole-suite-deploy/`.
+Ein bestehendes Python-Environment wird dabei nie als root ausgeführt, sondern
+in einem neuen root-eigenen Environment aufgebaut und erst nach erfolgreicher
+Abhängigkeitsinstallation übernommen. Für einen Rollback zuerst den
 konkreten Sicherungsordner ermitteln und dann genau diesen wiederherstellen:
 
 ```bash

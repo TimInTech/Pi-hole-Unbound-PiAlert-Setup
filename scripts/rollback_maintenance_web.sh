@@ -17,6 +17,7 @@ readonly -a TARGETS=(
   "/var/lib/pihole-suite/app/web/maintenance.html"
   "/var/lib/pihole-suite/app/web/maintenance.css"
   "/var/lib/pihole-suite/app/web/maintenance.js"
+  "/etc/systemd/system/pihole-suite.service"
 )
 
 die() {

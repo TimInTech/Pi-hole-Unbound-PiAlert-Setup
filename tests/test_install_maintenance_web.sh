@@ -5,8 +5,9 @@ ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 DESTDIR="$(mktemp -d)"
 GUARD_DIR="$(mktemp -d)"
 UNSAFE_DESTDIR="$(mktemp -d)"
+VENV_TEST_ROOT="$(mktemp -d)"
 GUARD_LOG="$DESTDIR/forbidden-actions.log"
-trap 'rm -rf -- "$DESTDIR" "$GUARD_DIR" "$UNSAFE_DESTDIR"' EXIT
+trap 'rm -rf -- "$DESTDIR" "$GUARD_DIR" "$UNSAFE_DESTDIR" "$VENV_TEST_ROOT"' EXIT
 
 # A staged install must never touch packages, networking, or live services.
 for command in apt apt-get caddy curl service sudo systemctl; do
@@ -30,6 +31,45 @@ mkdir -p "$UNSAFE_DESTDIR/var/lib/pihole-suite/app"
 ln -s /tmp "$UNSAFE_DESTDIR/var/lib/pihole-suite/app/web"
 if PATH="$GUARD_DIR:$PATH" bash "$ROOT_DIR/scripts/install_maintenance_web.sh" --destdir "$UNSAFE_DESTDIR" >/dev/null 2>&1; then
   printf '%s\n' 'symlinked app parent was accepted' >&2
+  exit 1
+fi
+
+# An upgrade must not execute a legacy service-writable venv binary as root.
+VENV_TEST_ROOT="$VENV_TEST_ROOT" ROOT_DIR="$ROOT_DIR" bash -c '
+  source "$ROOT_DIR/install.sh"
+  sudo() {
+    if [[ "$1" == "/usr/bin/python3" && "$2" == "-m" && "$3" == "venv" ]]; then
+      mkdir -p "$4/bin"
+      printf "#!/usr/bin/env bash\\nprintf safe > \\\"$VENV_TEST_ROOT/safe-pip-ran\\\"\\n" > "$4/bin/pip"
+      chmod 0755 "$4/bin/pip"
+      return 0
+    fi
+    if [[ "$1" == "chown" ]]; then
+      return 0
+    fi
+    "$@"
+  }
+  venv="$VENV_TEST_ROOT/venv"
+  mkdir -p "$venv/bin"
+  printf "#!/usr/bin/env bash\\nprintf compromised > \\\"$VENV_TEST_ROOT/old-pip-ran\\\"\\n" > "$venv/bin/pip"
+  chmod 0755 "$venv/bin/pip"
+  rebuild_python_venv "$venv"
+  test ! -e "$VENV_TEST_ROOT/old-pip-ran"
+  test -f "$VENV_TEST_ROOT/safe-pip-ran"
+  test -x "$venv/bin/pip"
+  test -x "$venv.previous/bin/pip"
+'
+
+# A legacy app symlink must be rejected before root writes application files.
+if VENV_TEST_ROOT="$VENV_TEST_ROOT" ROOT_DIR="$ROOT_DIR" bash -c '
+  source "$ROOT_DIR/install.sh"
+  sudo() { "$@"; }
+  STATE_DIR="$VENV_TEST_ROOT/state"
+  mkdir -p "$STATE_DIR"
+  ln -s /tmp "$STATE_DIR/app"
+  install_python_suite_app_files
+' >/dev/null 2>&1; then
+  printf '%s\n' 'legacy app symlink was accepted' >&2
   exit 1
 fi
 
@@ -101,11 +141,15 @@ test -x "$ROOT_DIR/scripts/rollback_maintenance_web.sh"
 # Deployment backup/rollback must be manifest-bound and preserve metadata.
 grep -Fq 'manifest.tsv' "$ROOT_DIR/scripts/install_maintenance_web.sh"
 grep -Fq 'sha256sum' "$ROOT_DIR/scripts/install_maintenance_web.sh"
+grep -Fq -- '--backup-only' "$ROOT_DIR/scripts/install_maintenance_web.sh"
+grep -Fq -- '--backup-dir' "$ROOT_DIR/scripts/install_maintenance_web.sh"
+grep -Fq '/etc/systemd/system/pihole-suite.service' "$ROOT_DIR/scripts/install_maintenance_web.sh"
 grep -Fq 'install -o "$uid" -g "$gid" -m "$mode"' "$ROOT_DIR/scripts/rollback_maintenance_web.sh"
 grep -Fq 'validate_manifest "$backup_dir"' "$ROOT_DIR/scripts/rollback_maintenance_web.sh"
 grep -Fq 'restore_manifest "$backup_dir"' "$ROOT_DIR/scripts/rollback_maintenance_web.sh"
 grep -Fq 'missing safe artifact directory' "$ROOT_DIR/scripts/rollback_maintenance_web.sh"
 grep -Fq 'manifest does not cover all deployment artifacts' "$ROOT_DIR/scripts/rollback_maintenance_web.sh"
 grep -Fq 'refusing to replace symlink target' "$ROOT_DIR/scripts/rollback_maintenance_web.sh"
+grep -Fq '/etc/systemd/system/pihole-suite.service' "$ROOT_DIR/scripts/rollback_maintenance_web.sh"
 
 echo 'maintenance web staged installer: PASS'
