@@ -1241,7 +1241,9 @@ RestrictNamespaces=true
 RestrictSUIDSGID=true
 MemoryDenyWriteExecute=true
 SystemCallFilter=@system-service
-CapabilityBoundingSet=
+# The exact sudoers allow-list needs only this privilege transition; all
+# maintenance work remains in separate root-owned systemd units.
+CapabilityBoundingSet=CAP_SETUID CAP_SETGID
 [Install]
 WantedBy=multi-user.target
 EOF
