@@ -17,13 +17,14 @@ import signal
 import sqlite3
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 import uuid
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable, Sequence
-
+from typing import Any
 
 STATE_FILE_MODE = 0o640
 BACKUP_DIR_MODE = 0o700
@@ -55,6 +56,7 @@ class RunnerContext:
     etc_root: Path = Path("/etc")
     state_dir: Path = Path("/var/lib/pihole-suite/jobs")
     backup_root: Path = Path("/var/backups/pihole-suite")
+    export_root: Path = Path('/var/lib/pihole-suite/exports')
     lock_file: Path = Path("/run/lock/pihole-maintenance-web.lock")
     command_executor: CommandExecutor | None = None
     pihole_bin: str = "/usr/local/bin/pihole"
@@ -62,7 +64,7 @@ class RunnerContext:
     reboot_required_path: Path = Path("/var/run/reboot-required")
 
     def __post_init__(self) -> None:
-        for field_name in ("etc_root", "state_dir", "backup_root", "lock_file", "reboot_required_path"):
+        for field_name in ("etc_root", "state_dir", "backup_root", "export_root", "lock_file", "reboot_required_path"):
             object.__setattr__(self, field_name, Path(getattr(self, field_name)))
         if self.command_executor is None:
             object.__setattr__(self, "command_executor", _run_command)
@@ -157,8 +159,17 @@ def _atomic_json_write(path: Path, payload: dict[str, Any], context: RunnerConte
             state_gid = grp.getgrnam("pihole-suite").gr_gid
         os.chown(temporary_path, -1, state_gid)
         os.replace(temporary_path, path)
+        _sync_directory(path.parent)
     finally:
         temporary_path.unlink(missing_ok=True)
+
+
+def _sync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def _write_state(payload: dict[str, Any], context: RunnerContext, *, history: bool = False) -> None:
@@ -275,6 +286,9 @@ def _manifest(staging: Path, job_id: str) -> Path:
 
 
 def _verify_manifest(staging: Path) -> None:
+    manifest_path = staging / 'manifest.json'
+    if staging.is_symlink() or manifest_path.is_symlink() or not manifest_path.is_file() or manifest_path.stat().st_size > 1024 * 1024:
+        raise RuntimeError('unsafe manifest')
     try:
         manifest = json.loads((staging / "manifest.json").read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -433,8 +447,10 @@ def _run_backup(context: RunnerContext, job_id: str) -> tuple[list[dict[str, Any
         published = context.backup_root / f"{_utc_now().replace(':', '').replace('-', '')}-{job_id}"
         os.replace(staging, published)
         _retain_newest_backups(context.backup_root)
+        from maintenance_backups import refresh_exports
+        refresh_exports(context)
         return [{"name": "backup", "required": True, "ok": True, "detail": "completed"}], None, str(published)
-    except (OSError, sqlite3.Error, ValueError, RuntimeError):
+    except (OSError, sqlite3.Error, ValueError, RuntimeError, tarfile.TarError, EOFError):
         shutil.rmtree(staging, ignore_errors=True)
         return [{"name": "backup", "required": True, "ok": False, "detail": "backup_failed"}], "backup_failed", None
 

@@ -78,7 +78,108 @@ def post_action(client: TestClient, cookies: dict[str, str], csrf_token: str, ac
         f"/api/maintenance/{action}",
         cookies=cookies,
         headers={"Origin": "https://pi.hole:8443", "X-CSRF-Token": csrf_token},
+        json={"confirmed": True} if action == "backup" else {"confirmation": "UPDATE"} if action == "update" else {},
     )
+
+
+def test_existing_api_key_remains_the_browser_credential(client):
+    assert client.post('/api/session', json={'password': 'correct horse battery staple'}).status_code == 200
+
+
+def test_backup_routes_auth_and_not_found(client, settings, tmp_path):
+    settings.export_root = tmp_path / 'exports'
+    assert client.get('/api/maintenance/backups').status_code == 401
+    _, csrf = login(client)
+    assert client.get('/api/maintenance/backups').json() == []
+    assert client.get('/api/maintenance/backups/invalid/download').status_code == 404
+    assert client.request('DELETE', '/api/maintenance/backups/invalid', json={'confirmation': 'invalid'}, headers={'Origin': 'https://pi.hole:8443', 'X-CSRF-Token': csrf}).status_code == 404
+
+
+def test_verified_download_and_delete_contract(client, settings, tmp_path):
+    import hashlib
+
+    from test_maintenance_runner import make_context
+
+    from maintenance_backups import delete_backup
+    from maintenance_runner import run_job
+    context, _ = make_context(tmp_path)
+    assert run_job('backup', context)['state'] == 'succeeded'
+    settings.export_root = context.export_root
+    _, csrf = login(client)
+    entry = client.get('/api/maintenance/backups').json()[0]
+    route = '/api/maintenance/backups/' + entry['backup_id']
+    download = client.get(route + '/download')
+    assert download.status_code == 200
+    assert hashlib.sha256(download.content).hexdigest() == entry['sha256']
+    assert download.headers['content-disposition'].startswith('attachment; filename="pihole-backup-')
+    assert download.headers['x-content-type-options'] == 'nosniff'
+    assert download.headers['cache-control'] == 'no-store'
+    headers = {'Origin': 'https://pi.hole:8443', 'X-CSRF-Token': csrf}
+    assert client.request('DELETE', route, json={'confirmation': entry['backup_id']}).status_code == 403
+    assert client.request('DELETE', route, headers=headers, json={'confirmation': 'wrong'}).status_code == 400
+    assert not settings.dispatcher.calls
+
+    def dispatch(argv):
+        assert argv == ['/usr/bin/sudo', '-n', '/usr/local/libexec/pihole-maintenance-backups', 'delete', entry['backup_id']]
+        delete_backup(context, argv[-1])
+
+    settings.dispatcher = dispatch
+    assert client.request('DELETE', route, headers=headers, json={'confirmation': entry['backup_id']}).status_code == 204
+    assert client.get(route + '/download').status_code == 404
+    assert client.get('/api/maintenance/backups').json() == []
+
+
+def test_slow_delete_keeps_status_responsive_and_blocks_jobs(client, settings, tmp_path):
+    import threading
+
+    import httpx
+    from test_maintenance_runner import make_context
+
+    from maintenance_runner import run_job
+    context, _ = make_context(tmp_path)
+    run_job('backup', context)
+    settings.export_root = context.export_root
+    cookies, csrf = login(client)
+    entry = client.get('/api/maintenance/backups').json()[0]
+    started, release = threading.Event(), threading.Event()
+
+    def slow_dispatch(argv):
+        started.set()
+        assert release.wait(5)
+
+    settings.dispatcher = slow_dispatch
+
+    async def exercise():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=client.app), base_url='https://pi.hole:8443', cookies=cookies) as session:
+            headers = {'Origin': 'https://pi.hole:8443', 'X-CSRF-Token': csrf}
+            deletion = asyncio.create_task(session.request('DELETE', '/api/maintenance/backups/' + entry['backup_id'], headers=headers, json={'confirmation': entry['backup_id']}))
+            try:
+                assert await asyncio.to_thread(started.wait, 2)
+                response = await asyncio.wait_for(session.get('/api/maintenance/status'), 1)
+                assert response.status_code == 200
+                response = await asyncio.wait_for(session.post('/api/maintenance/check', headers=headers), 1)
+                assert response.status_code == 409
+            finally:
+                release.set()
+            assert (await deletion).status_code == 204
+    asyncio.run(exercise())
+
+
+def test_resume_rotates_csrf(client):
+    cookies, old_token = login(client)
+    resumed = client.get('/api/session')
+    assert resumed.status_code == 200
+    assert resumed.json()['csrf_token'] != old_token
+    assert post_action(client, cookies, old_token, 'check').status_code == 403
+    assert client.get('/api/session').status_code == 200
+
+
+@pytest.mark.parametrize('action,body', [('backup', {}), ('backup', {'confirmed': 1}), ('update', {}), ('update', {'confirmation': 'update'})])
+def test_server_requires_exact_confirmation(client, dispatcher, action, body):
+    _, csrf = login(client)
+    response = client.post(f'/api/maintenance/{action}', json=body, headers={'Origin': 'https://pi.hole:8443', 'X-CSRF-Token': csrf})
+    assert response.status_code == 400
+    assert not dispatcher.calls
 
 
 def test_job_status_requires_session(client: TestClient):
@@ -326,6 +427,17 @@ def test_browser_ui_uses_confirmation_text_content_and_running_only_polling(clie
     assert "2000" in script
 
 
+def test_structured_bilingual_dashboard(client):
+    page = client.get('/').text
+    script = client.get('/maintenance.js').text
+    for element in ['system-metrics', 'step-list', 'backup-list', 'language', 'login-error']:
+        assert f'id="{element}"' in page
+    assert '<details' in page and '<details open' not in page
+    assert 'localStorage' in script
+    assert 'System check' in script and 'Systemcheck' in script
+    assert 'renderJob' in script
+
+
 @pytest.mark.skipif(shutil.which("node") is None, reason="Node.js is only needed for the browser-state regression")
 def test_browser_transition_polling_reaches_running_then_terminal_state():
     script_path = Path(__file__).resolve().parents[1] / "web" / "maintenance.js"
@@ -334,7 +446,7 @@ const fs = require("fs");
 const vm = require("vm");
 const element = {{ addEventListener() {{}}, value: "", checked: false, hidden: false, textContent: "" }};
 const context = {{
-  document: {{ querySelector: () => element }},
+  document: {{ querySelector: () => element, addEventListener() {{}} }},
   window: {{ clearTimeout() {{}}, setTimeout() {{ return 1; }}, location: {{ origin: "https://pi.hole:8443" }} }},
   Headers,
   fetch: async () => {{ throw new Error("fetch is not expected"); }},

@@ -1,3 +1,4 @@
 pihole-suite ALL=(root) NOPASSWD: /usr/bin/systemctl start --no-block pihole-maintenance-check.service
 pihole-suite ALL=(root) NOPASSWD: /usr/bin/systemctl start --no-block pihole-maintenance-backup.service
 pihole-suite ALL=(root) NOPASSWD: /usr/bin/systemctl start --no-block pihole-maintenance-update.service
+pihole-suite ALL=(root) NOPASSWD: /usr/local/libexec/pihole-maintenance-backups ^delete [0-9]{8}T[0-9]{6}Z-[0-9]{8}T[0-9]{12}Z-[a-f0-9]{32}$

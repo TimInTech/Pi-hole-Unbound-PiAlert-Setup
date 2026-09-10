@@ -65,6 +65,8 @@ AUTO_REMOVE_CONFLICTS=false
 INSTALL_NETALERTX=false
 INSTALL_PYTHON_SUITE=true
 INSTALL_MAINTENANCE_WEB=false
+MAINTENANCE_HOSTS=""
+MAINTENANCE_LAN_CIDR=""
 
 # Ports
 UNBOUND_PORT=5335
@@ -336,6 +338,14 @@ parse_args() {
       --skip-python-api) INSTALL_PYTHON_SUITE=false ;;
       --with-maintenance-web) INSTALL_MAINTENANCE_WEB=true ;;
       --skip-maintenance-web) INSTALL_MAINTENANCE_WEB=false ;;
+      --maintenance-hosts|--maintenance-lan-cidr)
+        [[ $# -ge 2 ]] || { log_error "$1 requires a value"; exit 1; }
+        case "$1" in
+          --maintenance-hosts) MAINTENANCE_HOSTS="$2" ;;
+          --maintenance-lan-cidr) MAINTENANCE_LAN_CIDR="$2" ;;
+        esac
+        shift
+        ;;
       --minimal) INSTALL_NETALERTX=false; INSTALL_PYTHON_SUITE=false; INSTALL_MAINTENANCE_WEB=false ;;
       *) log_error "Unknown option: $1"; exit 1 ;;
     esac
@@ -1131,6 +1141,8 @@ install_python_suite_app_files() {
   local -a app_files=(
     "start_suite.py"
     "maintenance_web.py"
+    "maintenance_backups.py"
+    "maintenance_config.py"
     "web/maintenance.html"
     "web/maintenance.css"
     "web/maintenance.js"
@@ -1372,7 +1384,8 @@ main() {
     if [[ "$DRY_RUN" == true ]]; then
       log "DRY RUN: Would install privileged maintenance web exposure"
     else
-      "$SCRIPT_DIR/scripts/install_maintenance_web.sh" --backup-dir "$maintenance_backup_dir"
+      local -a maintenance_args=(--backup-dir "$maintenance_backup_dir" --hosts "$MAINTENANCE_HOSTS" --lan-cidr "$MAINTENANCE_LAN_CIDR")
+      "$SCRIPT_DIR/scripts/install_maintenance_web.sh" "${maintenance_args[@]}"
     fi
   else
     log "⏭️  Skipping privileged maintenance web exposure (default; use --with-maintenance-web)"

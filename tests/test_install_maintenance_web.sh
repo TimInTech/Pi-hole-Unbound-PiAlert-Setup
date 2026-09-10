@@ -17,7 +17,7 @@ for command in apt apt-get caddy curl service sudo systemctl; do
 done
 
 run_staged_install() {
-  PATH="$GUARD_DIR:$PATH" bash "$ROOT_DIR/scripts/install_maintenance_web.sh" --destdir "$DESTDIR"
+  PATH="$GUARD_DIR:$PATH" bash "$ROOT_DIR/scripts/install_maintenance_web.sh" --destdir "$DESTDIR" --hosts pi.hole,192.168.178.2 --lan-cidr 192.168.178.0/24
 }
 
 run_staged_install
@@ -35,7 +35,7 @@ printf '%s\n' \
   $'\troot * /usr/share/caddy' \
   $'\tfile_server' \
   '}' > "$PACKAGED_DESTDIR/etc/caddy/Caddyfile"
-PATH="$GUARD_DIR:$PATH" bash "$ROOT_DIR/scripts/install_maintenance_web.sh" --destdir "$PACKAGED_DESTDIR"
+PATH="$GUARD_DIR:$PATH" bash "$ROOT_DIR/scripts/install_maintenance_web.sh" --destdir "$PACKAGED_DESTDIR" --hosts pi.hole,192.168.178.2 --lan-cidr 192.168.178.0/24
 grep -Fqx 'import Caddyfile.d/*' "$PACKAGED_DESTDIR/etc/caddy/Caddyfile"
 grep -Fqx '    auto_https disable_redirects' "$PACKAGED_DESTDIR/etc/caddy/Caddyfile"
 ! grep -Fqx ':80 {' "$PACKAGED_DESTDIR/etc/caddy/Caddyfile"
@@ -97,6 +97,9 @@ assert_mode "$DESTDIR/var/lib/pihole-suite/app" 755
 assert_mode "$DESTDIR/var/lib/pihole-suite/app/web" 755
 assert_mode "$DESTDIR/var/lib/pihole-suite/app/start_suite.py" 644
 assert_mode "$DESTDIR/var/lib/pihole-suite/app/maintenance_web.py" 644
+test ! -e "$DESTDIR/var/lib/pihole-suite/app/maintenance_credentials.py"
+test ! -e "$DESTDIR/usr/local/sbin/pihole-maintenance-password"
+test ! -e "$DESTDIR/etc/pihole-suite/maintenance-password.json"
 assert_mode "$DESTDIR/var/lib/pihole-suite/app/web/maintenance.html" 644
 assert_mode "$DESTDIR/var/lib/pihole-suite/app/web/maintenance.css" 644
 assert_mode "$DESTDIR/var/lib/pihole-suite/app/web/maintenance.js" 644
@@ -120,7 +123,7 @@ assert_mode "$SUDOERS" 440
 for action in check backup update; do
   grep -Fqx "pihole-suite ALL=(root) NOPASSWD: /usr/bin/systemctl start --no-block pihole-maintenance-${action}.service" "$SUDOERS"
 done
-test "$(grep -Ec '^pihole-suite ALL=' "$SUDOERS")" = 3
+test "$(grep -Ec '^pihole-suite ALL=' "$SUDOERS")" = 4
 ! grep -Eq '[*]|ALL[[:space:]]*=.*(sh|bash)' "$SUDOERS"
 
 CADDY_MAIN="$DESTDIR/etc/caddy/Caddyfile"
@@ -132,7 +135,9 @@ grep -Fqx 'pi.hole:8443, 192.168.178.2:8443 {' "$CADDY_SNIPPET"
 grep -Fqx '    tls internal' "$CADDY_SNIPPET"
 grep -Fqx '    @lan remote_ip 192.168.178.0/24 127.0.0.1 ::1' "$CADDY_SNIPPET"
 grep -Fqx '    handle @lan {' "$CADDY_SNIPPET"
-grep -Fqx '        reverse_proxy 127.0.0.1:8090' "$CADDY_SNIPPET"
+grep -Fqx '            reverse_proxy 127.0.0.1:8090' "$CADDY_SNIPPET"
+grep -Fqx '        respond "Not found" 404' "$CADDY_SNIPPET"
+grep -Fq 'path / /maintenance.css /maintenance.js /api/session /api/session/logout /api/maintenance/*' "$CADDY_SNIPPET"
 grep -Fqx '    respond "Forbidden" 403' "$CADDY_SNIPPET"
 test "$(grep -Foc '{' "$CADDY_SNIPPET")" = "$(grep -Foc '}' "$CADDY_SNIPPET")"
 
@@ -145,6 +150,8 @@ grep -Fq 'install_python_suite_app_files' "$ROOT_DIR/install.sh"
 grep -Fq 'Migrating Python Suite runtime to the hardened layout' "$ROOT_DIR/install.sh"
 ! grep -Fq 'log "✅ Python Suite OK"' "$ROOT_DIR/install.sh"
 grep -Fq 'maintenance_web.py' "$ROOT_DIR/install.sh"
+! grep -Fq 'maintenance_credentials.py' "$ROOT_DIR/install.sh"
+! grep -Fq -- '--maintenance-password-file' "$ROOT_DIR/install.sh"
 grep -Fq 'web/maintenance.html' "$ROOT_DIR/install.sh"
 grep -Fq 'web/maintenance.css' "$ROOT_DIR/install.sh"
 grep -Fq 'web/maintenance.js' "$ROOT_DIR/install.sh"

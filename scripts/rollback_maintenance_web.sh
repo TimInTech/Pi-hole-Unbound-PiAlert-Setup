@@ -18,6 +18,13 @@ readonly -a TARGETS=(
   "/var/lib/pihole-suite/app/web/maintenance.css"
   "/var/lib/pihole-suite/app/web/maintenance.js"
   "/etc/systemd/system/pihole-suite.service"
+  "/etc/systemd/system/pihole-suite.service.d/maintenance-web.conf"
+  "/etc/pihole-suite/maintenance-web.json"
+  "/usr/local/libexec/pihole-maintenance-backups"
+  "/usr/local/libexec/maintenance_runner.py"
+  "/usr/local/libexec/maintenance_backups.py"
+  "/var/lib/pihole-suite/app/maintenance_backups.py"
+  "/var/lib/pihole-suite/app/maintenance_config.py"
 )
 
 die() {
@@ -57,7 +64,7 @@ validate_manifest() {
   local backup_dir="$1" line target status saved mode uid gid digest actual_digest count=0
   declare -A seen=()
   IFS= read -r line < "$backup_dir/$MANIFEST_NAME"
-  [[ "$line" == 'version|1' ]] || die "unsupported manifest"
+  [[ "$line" == 'version|2' ]] || die "unsupported manifest: use the rollback helper saved with an older snapshot"
   [[ -d "$backup_dir/files" && ! -L "$backup_dir/files" ]] || die "missing safe artifact directory"
   while IFS='|' read -r target status saved mode uid gid digest; do
     [[ -n "$target" ]] || die "empty manifest entry"

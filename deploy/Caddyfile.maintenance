@@ -2,7 +2,11 @@ pi.hole:8443, 192.168.178.2:8443 {
     tls internal
     @lan remote_ip 192.168.178.0/24 127.0.0.1 ::1
     handle @lan {
-        reverse_proxy 127.0.0.1:8090
+        @maintenance path / /maintenance.css /maintenance.js /api/session /api/session/logout /api/maintenance/*
+        handle @maintenance {
+            reverse_proxy 127.0.0.1:8090
+        }
+        respond "Not found" 404
     }
     respond "Forbidden" 403
 }

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 import json
 import os
@@ -16,7 +17,15 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import (
+    FileResponse,
+    JSONResponse,
+    PlainTextResponse,
+    StreamingResponse,
+)
+from starlette.concurrency import run_in_threadpool
+
+from maintenance_backups import EXPORT_ROOT, read_index, safe_file, valid_id
 
 SESSION_IDLE_SECONDS = 30 * 60
 SESSION_MAX_SECONDS = 8 * 60 * 60
@@ -55,6 +64,8 @@ class MaintenanceSettings:
     """Configuration owned by the local service, never supplied by a request."""
 
     api_key: str
+    export_root: Path = EXPORT_ROOT
+    pihole_url: str = 'http://pi.hole/admin/'
     state_file: Path = Path("/var/lib/pihole-suite/jobs/current.json")
     dispatcher: Dispatcher | None = None
     allowed_hosts: frozenset[str] = ALLOWED_HOSTS
@@ -63,6 +74,7 @@ class MaintenanceSettings:
     login_failures: dict[str, list[float]] = field(default_factory=dict)
     state_lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
     start_reservation: StartReservation | None = None
+    deletion_running: bool = False
     now: Callable[[], float] = time.monotonic
 
     def __post_init__(self) -> None:
@@ -75,12 +87,19 @@ class MaintenanceSettings:
         api_key = os.environ.get("SUITE_API_KEY", "")
         if not api_key:
             raise RuntimeError("Missing required environment variable: SUITE_API_KEY")
+        config_file = Path('/etc/pihole-suite/maintenance-web.json')
+        if config_file.exists():
+            from maintenance_config import configuration
+            raw = json.loads(config_file.read_text())
+            config = configuration(','.join(raw['hosts']), raw['lan_cidr'])
+            return cls(api_key=api_key, allowed_hosts=frozenset(config['hosts'] + ['localhost', '127.0.0.1']), allowed_origins=frozenset(config['allowed_origins']), pihole_url=config['pihole_url'])
         return cls(api_key=api_key)
 
 
 def _dispatch(argv: list[str]) -> None:
     """Start one predefined unit without a shell or caller-controlled arguments."""
-    subprocess.run(argv, check=True, timeout=15, capture_output=True, text=True)
+    timeout = 300 if argv[:4] == ['/usr/bin/sudo', '-n', '/usr/local/libexec/pihole-maintenance-backups', 'delete'] else 15
+    subprocess.run(argv, check=True, timeout=timeout, capture_output=True, text=True)
 
 
 def _security_headers(response: Response) -> None:
@@ -155,6 +174,16 @@ def _session_from_request(request: Request, settings: MaintenanceSettings) -> tu
             raise HTTPException(status_code=401, detail="Authentication required")
         session.last_seen_at = now
         return session_id, session
+
+
+async def _confirmation(request: Request, expected: dict) -> None:
+    try:
+        body = await request.body()
+        parsed = json.loads(body) if len(body) <= 1024 else None
+    except (ValueError, UnicodeError):
+        parsed = None
+    if parsed != expected or (expected.get('confirmed') is True and parsed.get('confirmed') is not True):
+        raise HTTPException(status_code=400, detail='Invalid confirmation')
 
 
 def _require_mutation(request: Request, settings: MaintenanceSettings) -> tuple[str, Session]:
@@ -335,7 +364,15 @@ def create_maintenance_router(settings: MaintenanceSettings) -> APIRouter:
             samesite="strict",
             path="/",
         )
-        return {"csrf_token": csrf_token}
+        return {"csrf_token": csrf_token, 'pihole_url': settings.pihole_url}
+
+    @router.get('/api/session', include_in_schema=False)
+    def resume_session(request: Request, session: tuple[str, Session] = Depends(require_session)) -> dict:
+        if request.headers.get('origin') and request.headers['origin'] not in settings.allowed_origins:
+            raise HTTPException(status_code=403, detail='Request rejected')
+        with settings.state_lock:
+            session[1].csrf_token = secrets.token_urlsafe(32)
+            return {'csrf_token': session[1].csrf_token, 'pihole_url': settings.pihole_url}
 
     @router.post("/api/session/logout", status_code=204, include_in_schema=False)
     def logout(session: tuple[str, Session] = Depends(require_mutation)) -> Response:
@@ -349,6 +386,68 @@ def create_maintenance_router(settings: MaintenanceSettings) -> APIRouter:
     def status(_: tuple[str, Session] = Depends(require_session)) -> dict[str, Any]:
         return _state_or_error(settings)
 
+    def backup_entries() -> list[dict]:
+        try:
+            return read_index(settings.export_root)
+        except (OSError, ValueError, TypeError):
+            raise HTTPException(status_code=503, detail='Backup index unavailable') from None
+
+    def backup_entry(backup_id: str) -> dict:
+        if valid_id(backup_id):
+            for entry in backup_entries():
+                if entry['backup_id'] == backup_id:
+                    return entry
+        raise HTTPException(status_code=404, detail='Backup not found')
+
+    @router.get('/api/maintenance/backups', include_in_schema=False)
+    def backups(_: tuple[str, Session] = Depends(require_session)) -> list[dict]:
+        return backup_entries()
+
+    @router.get('/api/maintenance/backups/{backup_id}/download', include_in_schema=False)
+    def download_backup(backup_id: str, _: tuple[str, Session] = Depends(require_session)) -> StreamingResponse:
+        entry = backup_entry(backup_id)
+        try:
+            handle = safe_file(settings.export_root / (backup_id + '.tar.gz'))
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail='Backup not found') from None
+        except (OSError, ValueError):
+            raise HTTPException(status_code=503, detail='Backup unavailable') from None
+        if os.fstat(handle.fileno()).st_size != entry['size'] or hashlib.file_digest(handle, 'sha256').hexdigest() != entry['sha256']:
+            handle.close()
+            raise HTTPException(status_code=503, detail='Backup verification failed')
+        handle.seek(0)
+
+        def chunks():
+            with handle:
+                while chunk := handle.read(65536):
+                    yield chunk
+
+        return StreamingResponse(chunks(), media_type='application/gzip', headers={
+            'Content-Disposition': f'attachment; filename="pihole-backup-{backup_id}.tar.gz"',
+            'Content-Length': str(entry['size']), 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
+        })
+
+    @router.delete('/api/maintenance/backups/{backup_id}', status_code=204, include_in_schema=False)
+    async def remove_backup(backup_id: str, request: Request, _: tuple[str, Session] = Depends(require_mutation)) -> Response:
+        backup_entry(backup_id)
+        await _confirmation(request, {'confirmation': backup_id})
+        with settings.state_lock:
+            state = _state_or_error(settings)
+            if settings.deletion_running or settings.start_reservation is not None or state['state'] == 'running':
+                raise HTTPException(status_code=409, detail='Maintenance busy')
+            settings.deletion_running = True
+        try:
+            assert settings.dispatcher is not None
+            await run_in_threadpool(settings.dispatcher, ['/usr/bin/sudo', '-n', '/usr/local/libexec/pihole-maintenance-backups', 'delete', backup_id])
+        except subprocess.CalledProcessError as error:
+            raise HTTPException(status_code={3: 409, 4: 404}.get(error.returncode, 503), detail='Backup deletion rejected') from None
+        except (OSError, subprocess.SubprocessError):
+            raise HTTPException(status_code=503, detail='Backup deletion unavailable') from None
+        finally:
+            with settings.state_lock:
+                settings.deletion_running = False
+        return Response(status_code=204)
+
     def start_action(action: str) -> JSONResponse:
         with settings.state_lock:
             try:
@@ -357,7 +456,7 @@ def create_maintenance_router(settings: MaintenanceSettings) -> APIRouter:
                 raise HTTPException(status_code=503, detail="Job status unavailable") from None
             now = settings.now()
             _observe_runner_state(settings, state, now)
-            if settings.start_reservation is not None or (state is not None and state["state"] == "running"):
+            if settings.deletion_running or settings.start_reservation is not None or (state is not None and state["state"] == "running"):
                 raise HTTPException(status_code=409, detail="A maintenance job is already running")
             reservation = StartReservation(
                 token=secrets.token_urlsafe(16),
@@ -384,11 +483,13 @@ def create_maintenance_router(settings: MaintenanceSettings) -> APIRouter:
         return start_action("check")
 
     @router.post("/api/maintenance/backup", status_code=202, include_in_schema=False)
-    def start_backup(_: tuple[str, Session] = Depends(require_mutation)) -> JSONResponse:
+    async def start_backup(request: Request, _: tuple[str, Session] = Depends(require_mutation)) -> JSONResponse:
+        await _confirmation(request, {'confirmed': True})
         return start_action("backup")
 
     @router.post("/api/maintenance/update", status_code=202, include_in_schema=False)
-    def start_update(_: tuple[str, Session] = Depends(require_mutation)) -> JSONResponse:
+    async def start_update(request: Request, _: tuple[str, Session] = Depends(require_mutation)) -> JSONResponse:
+        await _confirmation(request, {'confirmation': 'UPDATE'})
         return start_action("update")
 
     return router

@@ -256,7 +256,8 @@ python3 start_suite.py
 
 Die optionale Wartungsoberfläche bietet Systemcheck, verifiziertes Backup und
 kontrolliertes Update unter `https://pi.hole:8443/`. Sie bleibt standardmäßig
-deaktiviert und wird nur zusammen mit Caddy bewusst freigeschaltet:
+deaktiviert und wird nur zusammen mit Caddy bewusst freigeschaltet. Die
+Browser-Anmeldung verwendet den bestehenden `SUITE_API_KEY`:
 
 ```bash
 sudo ./install.sh --with-maintenance-web

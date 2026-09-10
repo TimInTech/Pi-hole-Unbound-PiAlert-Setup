@@ -1,20 +1,20 @@
-import sqlite3
-import sys
-from pathlib import Path
 import fcntl
 import hashlib
 import json
 import os
 import shutil
+import sqlite3
+import sys
 import time
 from contextlib import contextmanager
+from pathlib import Path
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from maintenance_runner import CommandResult, RunnerContext, run_job
 import maintenance_runner
+from maintenance_runner import CommandResult, RunnerContext, run_job
 
 
 class RecordingExecutor:
@@ -72,6 +72,7 @@ def make_context(tmp_path: Path, *, corrupt_database: bool = False, fail_dns: bo
         etc_root=etc_root,
         state_dir=tmp_path / "state" / "jobs",
         backup_root=tmp_path / "backups",
+        export_root=tmp_path / 'exports',
         lock_file=tmp_path / "lock" / "maintenance.lock",
         command_executor=commands,
         pihole_bin="/usr/local/bin/pihole",
@@ -139,6 +140,7 @@ def test_command_execution_observes_running_state_before_terminal_state(tmp_path
         etc_root=context.etc_root,
         state_dir=context.state_dir,
         backup_root=context.backup_root,
+        export_root=context.export_root,
         lock_file=context.lock_file,
         command_executor=commands.__call__,
         pihole_bin=context.pihole_bin,
@@ -301,6 +303,7 @@ def test_update_reports_reboot_requirement_without_rebooting(tmp_path):
         pihole_bin=context.pihole_bin,
         state_gid=context.state_gid,
         reboot_required_path=reboot_marker,
+        export_root=context.export_root,
     )
 
     result = run_job("update", context)
@@ -419,6 +422,20 @@ def test_manifest_rejects_empty_or_incomplete_file_coverage(tmp_path):
         (staging / "manifest.json").write_text(json.dumps({**base, "files": files}))
         with pytest.raises(RuntimeError, match="manifest"):
             maintenance_runner._verify_manifest(staging)
+
+
+def test_atomic_json_write_syncs_file_and_parent_directory(tmp_path, monkeypatch):
+    context, _ = make_context(tmp_path)
+    calls = []
+    real_fsync = maintenance_runner.os.fsync
+
+    def record_fsync(descriptor):
+        calls.append(descriptor)
+        real_fsync(descriptor)
+
+    monkeypatch.setattr(maintenance_runner.os, 'fsync', record_fsync)
+    maintenance_runner._atomic_json_write(context.state_dir / 'atomic.json', {'state': 'test'}, context)
+    assert len(calls) == 2
 
 
 @pytest.mark.parametrize("unsafe_kind", ("absolute", "traversal"))

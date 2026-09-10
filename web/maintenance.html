@@ -3,30 +3,63 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Pi-hole Wartung</title>
+  <title>Pi-hole · Wartungs-Flugplan</title>
   <link rel="stylesheet" href="/maintenance.css">
 </head>
 <body>
+  <!-- THESIS: A maintenance flight plan, not a wall of JSON.
+  OWN-WORLD: Dark instruments, turquoise success, amber attention, red failure; text carries meaning.
+  STORY: Inspect the last verified result, choose one fixed action, follow its checks.
+  FIRST VIEWPORT: Wide status and instruments left, compact action rail right; language and connection above.
+  FORM: User-selected preflight workstation; code-led, no decorative telemetry.
+  FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance -->
+  <header class="topbar">
+    <a class="brand" href="/">Pi-hole <span data-i18n="maintenance">Wartung</span></a>
+    <nav aria-label="Navigation">
+      <span id="connection" role="status" data-i18n="disconnected">Nicht verbunden</span>
+      <label><span class="sr-only" data-i18n="language">Sprache</span><select id="language"><option value="de">DE</option><option value="en">EN</option></select></label>
+      <a id="pihole-link" href="/" data-i18n="openPihole">Pi-hole öffnen</a>
+      <button id="logout-button" type="button" hidden data-i18n="logout">Abmelden</button>
+    </nav>
+  </header>
   <main>
-    <h1>Pi-hole Wartung</h1>
-    <section id="login-panel" aria-labelledby="login-heading">
-      <h2 id="login-heading">Anmelden</h2>
+    <section id="login-panel" class="login" aria-labelledby="login-heading">
+      <h1 id="login-heading" data-i18n="flightplan">Wartungs-Flugplan</h1>
+      <p data-i18n="loginIntro">Der sichere Arbeitsplatz für Pi-hole und Unbound. Prüfen, sichern und kontrolliert aktualisieren.</p>
       <form id="login-form">
-        <label for="password">Wartungskennwort</label>
-        <input id="password" name="password" type="password" autocomplete="current-password" required>
-        <button type="submit">Anmelden</button>
+        <label for="password" data-i18n="apiKey">Suite-API-Key</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" maxlength="4096" required aria-describedby="login-error">
+        <button id="login-button" type="submit" class="primary" data-i18n="login">Anmelden</button>
       </form>
+      <p id="login-error" class="error" role="alert"></p>
+      <p class="muted" data-i18n="apiKeyHint">Verwendet den bestehenden SUITE_API_KEY, nicht das Pi-hole-Kennwort.</p>
     </section>
-    <section id="dashboard" hidden aria-live="polite">
-      <p id="status">Noch kein Wartungsauftrag.</p>
-      <div class="actions">
-        <article><h2>Systemcheck</h2><p>Prüft Pi-hole, Unbound und DNS.</p><button id="check-button" type="button">Systemcheck starten</button></article>
-        <article><h2>Backup</h2><p>Erstellt ein verifiziertes Sicherungsarchiv.</p><label><input id="backup-confirmed" type="checkbox"> Backup bestätigen</label><button id="backup-button" type="button">Backup erstellen</button></article>
-        <article><h2>Update</h2><p>Erstellt zuerst ein Backup und aktualisiert danach kontrolliert.</p><label for="update-confirmation">Zum Bestätigen UPDATE eingeben</label><input id="update-confirmation" type="text" autocomplete="off"><button id="update-button" type="button">Update starten</button></article>
+    <section id="dashboard" hidden aria-labelledby="dashboard-heading">
+      <div class="page-heading"><h1 id="dashboard-heading" tabindex="-1" data-i18n="flightplan">Wartungs-Flugplan</h1><button id="copy-address" type="button" data-i18n="copyAddress">Wartungsadresse kopieren</button></div>
+      <div class="workspace">
+        <div class="instruments">
+          <section class="overview" aria-labelledby="status">
+            <div class="section-head"><h2 data-i18n="overview">Betriebsübersicht</h2><button id="refresh-button" type="button" data-i18n="refresh">Neu laden</button></div>
+            <p id="status" class="status-title" role="status">Noch kein Wartungsauftrag.</p>
+            <p id="job-summary" class="muted"></p>
+            <p id="message" role="alert"></p>
+            <dl class="job-facts"><div><dt data-i18n="lastJob">Letzter Auftrag</dt><dd id="last-action">—</dd></div><div><dt data-i18n="time">Zeitpunkt</dt><dd id="last-time">—</dd></div><div><dt data-i18n="requiredChecks">Pflichtprüfungen bestanden</dt><dd id="required-count">—</dd></div></dl>
+          </section>
+          <section class="system" aria-labelledby="system-heading"><h2 id="system-heading" data-i18n="system">Systemwerte</h2><p class="muted" data-i18n="snapshot">Momentaufnahme des letzten Auftrags, keine Live-Messung.</p><dl id="system-metrics" class="metrics"></dl></section>
+          <section class="checks" aria-labelledby="checks-heading"><h2 id="checks-heading" data-i18n="checklist">Prüfablauf</h2><ol id="step-list"></ol></section>
+        </div>
+        <aside class="actions" aria-labelledby="actions-heading">
+          <h2 id="actions-heading" data-i18n="actions">Wartung ausführen</h2>
+          <p class="muted" data-i18n="oneJob">Ein Auftrag zur Zeit. Sicherheitsprüfungen bleiben aktiv.</p>
+          <article><h3 data-i18n="check">Systemcheck</h3><p data-i18n="checkDescription">Prüft Pi-hole, Unbound und beide DNS-Pfade. Ohne Änderungen.</p><button id="check-button" type="button" class="primary" data-i18n="startCheck">Systemcheck starten</button></article>
+          <article><h3 data-i18n="backup">Backup</h3><p data-i18n="backupDescription">Sichert Konfiguration und Datenbanken. Prüft alle Dateien vor der Freigabe.</p><label class="checkbox"><input id="backup-confirmed" type="checkbox"><span data-i18n="confirmBackup">Backup bestätigen</span></label><button id="backup-button" type="button" data-i18n="startBackup">Backup erstellen</button></article>
+          <article><h3 data-i18n="update">Update</h3><p data-i18n="updateDescription">Erstellt zuerst ein Backup, aktualisiert das System und prüft anschließend DNS. Kann länger dauern.</p><label for="update-confirmation" data-i18n="confirmUpdate">Zum Bestätigen UPDATE eingeben</label><input id="update-confirmation" type="text" autocomplete="off" spellcheck="false"><button id="update-button" type="button" class="caution" data-i18n="startUpdate">Update starten</button></article>
+        </aside>
       </div>
-      <button id="logout-button" type="button">Abmelden</button>
-      <pre id="job-result" aria-label="Ergebnis"></pre>
+      <section class="backups" aria-labelledby="backups-heading"><div class="section-head"><h2 id="backups-heading" data-i18n="backups">Verifizierte Backups</h2><span data-i18n="retention">Maximal 10 Sicherungen</span></div><p class="muted" data-i18n="backupPrivacy">Downloads enthalten private Konfiguration. Sicher aufbewahren. Wiederherstellung nur lokal, nicht im Browser.</p><div id="backup-list"></div></section>
+      <details><summary data-i18n="details">Technische Details</summary><pre id="job-result" aria-label="JSON"></pre></details>
     </section>
+    <footer><span data-i18n="footer">Lokal betrieben. Bewusst gewartet.</span></footer>
   </main>
   <script src="/maintenance.js" defer></script>
 </body>

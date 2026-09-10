@@ -258,7 +258,8 @@ python3 start_suite.py
 
 The optional maintenance panel provides system checks, verified backups and
 controlled updates at `https://pi.hole:8443/`. It remains disabled by default
-and is enabled explicitly with Caddy:
+and is enabled explicitly with Caddy. Browser sign-in uses the existing
+`SUITE_API_KEY`:
 
 ```bash
 sudo ./install.sh --with-maintenance-web
