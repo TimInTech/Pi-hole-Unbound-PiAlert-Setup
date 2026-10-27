@@ -15,6 +15,22 @@ client = TestClient(app, base_url="https://pi.hole:8443")
 HEADERS = {"X-API-Key": "test-key"}
 BAD_HEADERS = {"X-API-Key": "wrong-key"}
 
+def test_unknown_device_count_is_not_reported_as_zero():
+    assert client.get('/stats', headers=HEADERS).json()['total_devices'] is None
+    response = client.get('/devices', headers=HEADERS)
+    assert response.status_code == 503
+
+def test_exposed_monitoring_endpoints_require_api_key():
+    for path in ('/version', '/dns', '/devices', '/leases'):
+        assert client.get(path).status_code == 401
+
+def test_missing_dns_log_is_unavailable_not_zero(monkeypatch):
+    monkeypatch.setattr(start_suite, '_read_lines', lambda *args: None)
+    response = client.get('/stats', headers=HEADERS)
+    assert response.json()['recent_queries'] is None
+    assert client.get('/dns', headers=HEADERS).status_code == 503
+    assert client.get('/leases', headers=HEADERS).status_code == 503
+
 def test_read_lines_uses_bounded_iteration(tmp_path, monkeypatch):
     import builtins
     path = tmp_path / 'log'

@@ -170,7 +170,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (stats) {
-            updateElementText('pihole-recent-queries', stats.recent_queries);
+            updateElementText('pihole-recent-queries', stats.recent_queries ?? 'Nicht verfügbar');
         }
 
         // Process Unbound

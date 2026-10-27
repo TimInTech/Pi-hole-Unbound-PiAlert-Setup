@@ -74,12 +74,12 @@ app.include_router(create_maintenance_router(maintenance_settings))
 if os.path.isdir(os.path.join(os.path.dirname(__file__), "dashboard")):
     app.mount("/dashboard", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "dashboard"), html=True), name="dashboard")
 
-def _read_lines(path: str, limit: int) -> list[str]:
+def _read_lines(path: str, limit: int) -> list[str] | None:
     try:
         with open(path, "r", encoding="utf-8", errors="replace") as f:
             return list(deque(f, maxlen=limit))
     except OSError:
-        return []
+        return None
 
 
 def _run(cmd: list[str], timeout: float = 2.0) -> dict[str, Any]:
@@ -123,18 +123,21 @@ def _http_ok(url: str, timeout: float = 1.5) -> bool:
         return False
 
 
-def _parse_pihole_log(limit: int) -> list[dict[str, Any]]:
+def _parse_pihole_log(limit: int) -> list[dict[str, Any]] | None:
     # Best-effort parser for classic Pi-hole log format.
-    # If file isn't present/accessible, returns empty list.
+    # If no candidate is present and readable, report unavailable.
     candidates = [
         "/var/log/pihole/pihole.log",
         "/var/log/pihole.log",
     ]
-    lines: list[str] = []
+    lines: list[str] | None = None
     for p in candidates:
         lines = _read_lines(p, limit * 3)
-        if lines:
+        if lines is not None:
             break
+
+    if lines is None:
+        return None
 
     out: list[dict[str, Any]] = []
     # Example patterns differ by versions; keep it permissive.
@@ -161,7 +164,7 @@ def _parse_pihole_log(limit: int) -> list[dict[str, Any]]:
     return list(reversed(out))
 
 
-def _parse_dhcp_leases(limit: int) -> list[dict[str, Any]]:
+def _parse_dhcp_leases(limit: int) -> list[dict[str, Any]] | None:
     # Pi-hole DHCP leases file: /etc/pihole/dhcp.leases
     # Format: <expiry_epoch> <mac> <ip> <hostname> <clientid>
     # We only have expiry; lease_start may be unknown.
@@ -169,6 +172,8 @@ def _parse_dhcp_leases(limit: int) -> list[dict[str, Any]]:
 
     path = "/etc/pihole/dhcp.leases"
     lines = _read_lines(path, limit * 3)
+    if lines is None:
+        return None
     out: list[dict[str, Any]] = []
 
     def to_iso(epoch: str) -> str | None:
@@ -300,29 +305,35 @@ def netalertx() -> dict[str, Any]:
 @app.get("/dns", dependencies=[Depends(require_api_key)])
 def dns(limit: int = 50) -> list[dict[str, Any]]:
     limit = max(1, min(limit, 500))
-    return _parse_pihole_log(limit)
+    entries = _parse_pihole_log(limit)
+    if entries is None:
+        raise HTTPException(status_code=503, detail="DNS log unavailable")
+    return entries
 
 
 @app.get("/devices", dependencies=[Depends(require_api_key)])
 def devices() -> list[dict[str, Any]]:
     # Placeholder: device discovery depends on NetAlertX (formerly Pi.Alert)
     # APIs and is environment-specific.
-    return []
+    raise HTTPException(status_code=503, detail="Device discovery is not configured")
 
 
 @app.get("/leases", dependencies=[Depends(require_api_key)])
 def leases(limit: int = 200) -> list[dict[str, Any]]:
     limit = max(1, min(limit, 2000))
-    return _parse_dhcp_leases(limit)
+    entries = _parse_dhcp_leases(limit)
+    if entries is None:
+        raise HTTPException(status_code=503, detail="DHCP leases unavailable")
+    return entries
 
 
 @app.get("/stats", dependencies=[Depends(require_api_key)])
 def stats() -> dict[str, Any]:
     recent = _parse_pihole_log(100)
     return {
-        "total_dns_logs": len(recent),
-        "total_devices": 0,
-        "recent_queries": len(recent),
+        "total_dns_logs": len(recent) if recent is not None else None,
+        "total_devices": None,
+        "recent_queries": len(recent) if recent is not None else None,
         "note": "DNS stats are derived from best-effort log parsing; may be empty depending on Pi-hole logging/permissions.",
     }
 

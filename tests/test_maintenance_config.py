@@ -19,7 +19,8 @@ def test_network_config_and_route_boundary():
     assert 'path / /maintenance.css /maintenance.js /api/session /api/session/logout /api/maintenance/*' in caddy
     assert 'respond "Not found" 404' in caddy
     assert 'max_size 8KB' in caddy
-    assert '/dns' not in caddy
+    for route in ('/version', '/dns', '/devices', '/leases'):
+        assert route in caddy
 
 
 @pytest.mark.parametrize('host,network', [('host {', '192.168.1.0/24'), ('https://pi.hole', '192.168.1.0/24'), ('pi.hole', '0.0.0.0/0'), ('pi.hole', '8.8.8.0/24')])

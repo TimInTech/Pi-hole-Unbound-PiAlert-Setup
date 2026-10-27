@@ -27,7 +27,7 @@ def caddy_config(config: dict) -> str:
         request_body {{
             max_size 8KB
         }}
-        @maintenance path / /maintenance.css /maintenance.js /api/session /api/session/logout /api/maintenance/* /dashboard /dashboard/* /health /urls /pihole /unbound /netalertx /stats
+        @maintenance path / /maintenance.css /maintenance.js /api/session /api/session/logout /api/maintenance/* /dashboard /dashboard/* /health /urls /pihole /unbound /netalertx /stats /version /dns /devices /leases
         handle @maintenance {{
             reverse_proxy 127.0.0.1:8090
         }}
