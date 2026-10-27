@@ -65,6 +65,7 @@ AUTO_REMOVE_CONFLICTS=false
 INSTALL_NETALERTX=false
 INSTALL_PYTHON_SUITE=true
 INSTALL_MAINTENANCE_WEB=false
+UPGRADE_ONLY=false
 MAINTENANCE_HOSTS=""
 MAINTENANCE_LAN_CIDR=""
 
@@ -330,6 +331,7 @@ parse_args() {
       --skip-netalertx) INSTALL_NETALERTX=false ;;
       --skip-python-api) INSTALL_PYTHON_SUITE=false ;;
       --with-maintenance-web) INSTALL_MAINTENANCE_WEB=true ;;
+      --upgrade-only) UPGRADE_ONLY=true ;;
       --skip-maintenance-web) INSTALL_MAINTENANCE_WEB=false ;;
       --maintenance-hosts|--maintenance-lan-cidr)
         [[ $# -ge 2 ]] || { log_error "$1 requires a value"; exit 1; }
@@ -1374,6 +1376,25 @@ run_healthchecks() {
 # =============================================
 # MAIN
 # =============================================
+validate_upgrade_arguments() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --upgrade-only) shift ;;
+      --maintenance-hosts|--maintenance-lan-cidr)
+        [[ $# -ge 2 && "$2" != --* ]] || { log_error "$1 requires a value"; return 1; }
+        shift 2 ;;
+      *) log_error "Selective upgrade does not support $1"; return 1 ;;
+    esac
+  done
+}
+
+run_existing_upgrade() {
+  local -a args=(--upgrade-only)
+  [[ -z "$MAINTENANCE_HOSTS" ]] || args+=(--hosts "$MAINTENANCE_HOSTS")
+  [[ -z "$MAINTENANCE_LAN_CIDR" ]] || args+=(--lan-cidr "$MAINTENANCE_LAN_CIDR")
+  "$SCRIPT_DIR/scripts/install_maintenance_web.sh" "${args[@]}"
+}
+
 guard_existing_install() {
   local pihole_config="$1" unbound_config="$2" suite_app="$3"
   if [[ -e "$pihole_config" || -L "$pihole_config" || -e "$unbound_config" || -L "$unbound_config" || -e "$suite_app" || -L "$suite_app" ]] \
@@ -1387,6 +1408,11 @@ guard_existing_install() {
 main() {
   local maintenance_backup_dir=""
   parse_args "$@"
+  if [[ "$UPGRADE_ONLY" == true ]]; then
+    validate_upgrade_arguments "$@" || return 1
+    run_existing_upgrade
+    return
+  fi
   if [[ "$INSTALL_MAINTENANCE_WEB" == true && "$INSTALL_PYTHON_SUITE" != true ]]; then
     log_error "--with-maintenance-web requires the Python API Suite"
     exit 1

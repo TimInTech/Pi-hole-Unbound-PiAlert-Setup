@@ -22,7 +22,7 @@ sudo apt update
 sudo apt install caddy
 ```
 
-Danach installiert der vorhandene Projekt-Installer den Wartungsdienst gezielt:
+Bei einer Neuinstallation installiert der Projekt-Installer den Wartungsdienst gezielt:
 
 ```bash
 sudo ./install.sh --with-maintenance-web
@@ -110,10 +110,10 @@ dig +short @127.0.0.1 -p 5335 example.com
 Der Gesamtinstaller verweigert einen Lauf bei erkannter bestehender Installation,
 weil sein Rollback DNS, Resolver, Dienste und Python-Environment nicht vollständig
 abdeckt. Ein Upgrade erfordert eine separat geprüfte Migration und Sicherung.
-Für eine bereits laufende Suite steht der eingeschränkte Web-Upgradepfad bereit:
+Für eine bereits laufende Suite steht der eingeschränkte Suite- und Web-Upgradepfad bereit:
 
 ```bash
-sudo ./scripts/install_maintenance_web.sh --upgrade-only
+sudo ./install.sh --upgrade-only
 ```
 
 Er setzt laufendes Pi-hole, Unbound, Caddy und die Suite sowie aktivierte Webdienste
@@ -122,6 +122,9 @@ unter Wartungssperre ein validiertes Deployment-Backup. Er ändert weder DNS- no
 Resolverkonfiguration oder das Python-Environment. Caddy wird neu geladen und die
 Suite neu gestartet. Der Pfad ersetzt kein vollständiges Systembackup und muss vor
 einer produktiven Nutzung auf dem Zielsystem überprüft werden.
+Bei Bedarf können `--maintenance-hosts HOST,IP` und `--maintenance-lan-cidr CIDR`
+übergeben werden. Allgemeine Installationsoptionen wie `--force` sind bei diesem
+selektiven Upgrade bewusst nicht zulässig.
 
 Der Web-Installer erstellt ein root-eigenes Deployment-Backup unter
 `/var/backups/pihole-suite-deploy/`. Es deckt die im Manifest aufgeführten

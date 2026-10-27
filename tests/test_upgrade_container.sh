@@ -65,7 +65,7 @@ EOF
 chmod 0755 /usr/bin/{systemctl,systemd-analyze,caddy,dig,curl,ss,sudo} /usr/sbin/visudo
 
 touch /tmp/fail-caddy
-if bash /src/scripts/install_maintenance_web.sh --upgrade-only --hosts pi.hole,192.168.178.2 --lan-cidr 192.168.178.0/24; then
+if bash /src/install.sh --upgrade-only --maintenance-hosts pi.hole,192.168.178.2 --maintenance-lan-cidr 192.168.178.0/24; then
   printf 'injected deployment failure was ignored\n' >&2
   exit 1
 fi
@@ -78,7 +78,7 @@ grep -Fqx 'upstream config' /etc/pihole/pihole.toml
 grep -Fqx 'unbound config' /etc/unbound/unbound.conf.d/forward.conf
 test "$(sha256sum /etc/resolv.conf)" = "$resolver_checksum"
 
-bash /src/scripts/install_maintenance_web.sh --upgrade-only --hosts pi.hole,192.168.178.2 --lan-cidr 192.168.178.0/24
+bash /src/install.sh --upgrade-only --maintenance-hosts pi.hole,192.168.178.2 --maintenance-lan-cidr 192.168.178.0/24
 cmp /src/start_suite.py /var/lib/pihole-suite/app/start_suite.py
 grep -Fqx custom-data /var/lib/pihole-suite/app/custom.txt
 grep -Fqx old-venv /var/lib/pihole-suite/venv/preserved

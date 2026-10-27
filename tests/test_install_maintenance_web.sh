@@ -21,6 +21,19 @@ run_staged_install() {
 }
 
 run_staged_install
+ROOT_DIR="$ROOT_DIR" bash -c '
+  source "$ROOT_DIR/install.sh"
+  run_existing_upgrade() { test "$MAINTENANCE_HOSTS" = pi.hole; test "$MAINTENANCE_LAN_CIDR" = 192.168.178.0/24; }
+  main --upgrade-only --maintenance-hosts pi.hole --maintenance-lan-cidr 192.168.178.0/24
+'
+if ROOT_DIR="$ROOT_DIR" bash -c '
+  source "$ROOT_DIR/install.sh"
+  run_existing_upgrade() { return 0; }
+  main --upgrade-only --force
+' >/dev/null 2>&1; then
+  printf '%s\n' 'unsafe full-installer option accepted for selective upgrade' >&2
+  exit 1
+fi
 VENV_TEST_ROOT="$VENV_TEST_ROOT" ROOT_DIR="$ROOT_DIR" bash -c '
   source "$ROOT_DIR/scripts/install_maintenance_web.sh"
   sudo() {

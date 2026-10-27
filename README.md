@@ -45,6 +45,8 @@ sudo ./install.sh
 
 > Clone as a **normal user** (`pi`), not root. The installer requires `sudo ./install.sh`.
 
+For an existing suite with the maintenance interface, `sudo ./install.sh --upgrade-only` updates the suite and web files without changing DNS configuration or the Python environment. See [docs/MAINTENANCE_WEB.md](docs/MAINTENANCE_WEB.md) for prerequisites and rollback.
+
 ---
 
 ## ✅ Requirements

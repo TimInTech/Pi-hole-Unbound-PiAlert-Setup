@@ -43,6 +43,8 @@ sudo ./install.sh
 
 > Als **normaler Nutzer** klonen (z.B. `pi`), nicht als root. Der Installer wird via `sudo ./install.sh` ausgeführt.
 
+Für eine bereits laufende Suite mit Wartungsoberfläche aktualisiert `sudo ./install.sh --upgrade-only` ausschließlich Suite- und Webdateien. DNS-Konfiguration und Python-Environment bleiben erhalten; Voraussetzungen und Rollback stehen in [docs/MAINTENANCE_WEB.md](docs/MAINTENANCE_WEB.md).
+
 ---
 
 ## ✅ Voraussetzungen
