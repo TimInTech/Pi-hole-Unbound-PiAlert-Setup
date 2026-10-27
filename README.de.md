@@ -232,9 +232,14 @@ Backups werden in `/home/pi/pihole-rescue-backups/` gespeichert und enthalten:
 
 ---
 
-## 🐍 Optional: Suite REST API
+## 🐍 Optional: Suite REST API & Dashboard
 
 `start_suite.py` ist eine **optionale** FastAPI-Anwendung für Monitoring.
+Es enthält auch ein modernes, responsives **Dashboard** zur Überwachung Ihres DNS-Stacks.
+
+- **Dashboard-Zugriff**: Standardmäßig erreichbar unter `http://127.0.0.1:8090/`.
+- **Fernzugriff**: Ein sicherer Fernzugriff wird über SSH-Portweiterleitung (`ssh -L 8090:127.0.0.1:8090 user@pihole-server`) oder einen Reverse-Proxy empfohlen.
+- **Authentifizierung**: Für das Dashboard-Login und die API-Endpunkte ist der `SUITE_API_KEY` erforderlich.
 
 ```bash
 # Konfiguration

@@ -1119,6 +1119,14 @@ setup_python_suite() {
     sudo mkdir -p "$suite_app_dir" 2>/dev/null || true
     if [[ -f "$SCRIPT_DIR/start_suite.py" ]]; then
       sudo install -m 0644 "$SCRIPT_DIR/start_suite.py" "$suite_entrypoint"
+
+      # Install dashboard assets
+      if [[ -d "$SCRIPT_DIR/dashboard" ]]; then
+        sudo mkdir -p "$suite_app_dir/dashboard"
+        sudo cp -r "$SCRIPT_DIR/dashboard/"* "$suite_app_dir/dashboard/"
+        sudo chmod -R 0644 "$suite_app_dir/dashboard/"*
+        sudo find "$suite_app_dir/dashboard" -type d -exec chmod 0755 {} \;
+      fi
     else
       log_warning "Python Suite entrypoint missing at $SCRIPT_DIR/start_suite.py (service may fail to start)"
     fi
