@@ -1,5 +1,3 @@
-const fs = require('fs');
-const vm = require('vm');
 const assert = require('assert');
 const nodes = new Map();
 function element(id) {
@@ -18,11 +16,11 @@ const document = {
     getElementById(id) { return id.includes(' ') ? null : element(id); },
     querySelector(selector) { return element(selector.slice(1)); }
 };
-vm.runInNewContext(fs.readFileSync('dashboard/app.js', 'utf8'), {
-    document, sessionStorage: {getItem: () => 'key'},
-    fetch: async url => ({ok: true, json: async () => data[url]}),
-    setTimeout() {}, console, Date
-});
+global.document = document;
+global.sessionStorage = {getItem: () => 'key'};
+global.fetch = async url => ({ok: true, json: async () => data[url]});
+global.setTimeout = () => {};
+require('../dashboard/app.js');
 setImmediate(() => {
     assert.strictEqual(element('overall-status .status-indicator').className, 'status-indicator healthy');
     assert.strictEqual(element('overall-status .status-text').textContent, 'Alle Kernsysteme gesund');

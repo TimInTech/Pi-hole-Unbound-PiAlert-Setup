@@ -1,4 +1,13 @@
 import pytest
+from maintenance_install import installation_target
+
+def test_installation_target_rejects_traversal_and_symlinks(tmp_path):
+    assert installation_target(tmp_path, 'etc/pihole-suite/maintenance-web.json') == tmp_path / 'etc/pihole-suite/maintenance-web.json'
+    with pytest.raises(ValueError):
+        installation_target(tmp_path, '../outside')
+    (tmp_path / 'etc').symlink_to(tmp_path.parent, target_is_directory=True)
+    with pytest.raises(ValueError):
+        installation_target(tmp_path, 'etc/pihole-suite/maintenance-web.json')
 
 from maintenance_config import caddy_config, configuration
 

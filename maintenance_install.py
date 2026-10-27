@@ -12,6 +12,25 @@ from pathlib import Path
 
 from maintenance_config import caddy_config, configuration
 
+INSTALL_TARGETS = frozenset({
+    'etc/pihole-suite/maintenance-web.json',
+    'etc/caddy/Caddyfile.d/pihole-maintenance.caddy',
+})
+
+def installation_target(root: Path, name: str) -> Path:
+    if name not in INSTALL_TARGETS or not root.is_absolute():
+        raise ValueError('Invalid installation target')
+    canonical_root = root.resolve(strict=True)
+    if not canonical_root.is_dir() or root != canonical_root:
+        raise ValueError('Unsafe installation root')
+    path = canonical_root / name
+    canonical_path = path.resolve(strict=False)
+    if os.path.commonpath((str(canonical_root), str(canonical_path))) != str(canonical_root) or canonical_path != path:
+        raise ValueError('Unsafe installation path')
+    if path.is_symlink() or any(parent.is_symlink() for parent in path.parents):
+        raise ValueError('Unsafe installation path')
+    return path
+
 
 def atomic_file(path: Path, value: str) -> None:
     if path.is_symlink() or any(parent.is_symlink() for parent in path.parents):
@@ -51,10 +70,14 @@ def main():
     parser.add_argument('--lock-fd', type=int)
     parser.add_argument('--skip-export-refresh', action='store_true')
     args = parser.parse_args()
+    if args.destdir and os.geteuid() == 0:
+        raise ValueError('Staged installation must not run as root')
     if not args.destdir and os.geteuid() != 0:
         raise ValueError('Root required')
     root = Path(args.destdir or '/')
-    config_path = root / 'etc/pihole-suite/maintenance-web.json'
+    if args.destdir and root == Path('/'):
+        raise ValueError('Staging root must not be /')
+    config_path = installation_target(root, 'etc/pihole-suite/maintenance-web.json')
     if not args.hosts and not args.lan_cidr and config_path.exists():
         raw = json.loads(config_path.read_text())
         hosts, cidr = ','.join(raw['hosts']), raw['lan_cidr']
@@ -63,7 +86,7 @@ def main():
         hosts, cidr = args.hosts or detected_hosts, args.lan_cidr or detected_cidr
     config = configuration(hosts, cidr)
     atomic_file(config_path, json.dumps(config) + '\n')
-    atomic_file(root / 'etc/caddy/Caddyfile.d/pihole-maintenance.caddy', caddy_config(config))
+    atomic_file(installation_target(root, 'etc/caddy/Caddyfile.d/pihole-maintenance.caddy'), caddy_config(config))
     if not args.destdir and not args.skip_export_refresh:
         from maintenance_backups import refresh_exports
         from maintenance_runner import RunnerContext
