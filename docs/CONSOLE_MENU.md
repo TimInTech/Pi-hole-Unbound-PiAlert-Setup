@@ -15,6 +15,15 @@ The suite ships two interactive menus:
 
 Both menus use `scripts/lib/ui.sh` for consistent output formatting.
 
+## Web Maintenance Panel
+
+The optional HTTPS panel is separate from both menus. After explicit
+installation with `sudo ./install.sh --with-maintenance-web`, it provides only
+system check, verified backup and controlled update at
+`https://pi.hole:8443/`. It does not offer restore, backup download or deletion.
+Use the existing Rescue menu for recovery operations. Operational details and
+rollback are documented in [MAINTENANCE_WEB.md](MAINTENANCE_WEB.md).
+
 ---
 
 ## Console Menu

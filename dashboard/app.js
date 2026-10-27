@@ -67,13 +67,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateStatusIndicator(elementId, status) {
-        const el = document.getElementById(elementId);
+        const el = document.querySelector('#' + elementId);
         if (!el) return;
         el.className = 'status-indicator ' + status;
     }
 
     function updateElementText(elementId, text) {
-        const el = document.getElementById(elementId);
+        const el = document.querySelector('#' + elementId);
         if (el) el.textContent = text;
     }
 
@@ -99,7 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const now = new Date();
         updateElementText('last-update', `Letzte Aktualisierung: ${now.toLocaleTimeString()}`);
 
-        updateStatusIndicator('overall-status', 'loading');
+        updateStatusIndicator('overall-status .status-indicator', 'loading');
         updateElementText('overall-status .status-text', 'Wird geladen...');
 
         const [health, urls, pihole, unbound, netalertx, stats] = await Promise.all([
@@ -144,7 +144,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             updateElementText('pihole-version', pihole.pihole_version);
 
-            let upstreamsStr = 'Keine / Unbekannt';
+            let upstreamsStr = pihole.upstreams === null ? 'Unbekannt (nicht lesbar)' : 'Keine konfiguriert';
             if (pihole.upstreams && pihole.upstreams.length > 0) {
                 upstreamsStr = pihole.upstreams.join(', ');
 
@@ -153,10 +153,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     const expectedUpstream = `127.0.0.1#${unbound.port}`;
                     if (!pihole.upstreams.includes(expectedUpstream)) {
                         upstreamsStr += ' (Warnung: Unbound nicht konfiguriert!)';
-                        updateStatusIndicator('pihole-status-indicator', 'warning');
+                        if (pihole.ftl_active) updateStatusIndicator('pihole-status-indicator', 'warning');
                         allHealthy = false;
                     }
                 }
+            } else {
+                if (pihole.ftl_active) updateStatusIndicator('pihole-status-indicator', 'warning');
+                allHealthy = false;
             }
             updateElementText('pihole-upstreams', upstreamsStr);
 

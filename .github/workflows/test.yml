@@ -27,3 +27,5 @@ jobs:
       - name: Run tests
         run: |
           PYTHONPATH=. pytest tests/
+          bash tests/test_install_maintenance_web.sh
+          node tests/test_dashboard_dom.js

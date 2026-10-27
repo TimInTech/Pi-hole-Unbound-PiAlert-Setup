@@ -9,16 +9,36 @@ os.environ["SUITE_PORT"] = "8090"
 os.environ["SUITE_HOST"] = "127.0.0.1"
 
 from start_suite import app
+import start_suite
 
-client = TestClient(app)
+client = TestClient(app, base_url="https://pi.hole:8443")
 HEADERS = {"X-API-Key": "test-key"}
 BAD_HEADERS = {"X-API-Key": "wrong-key"}
 
-def test_root_redirect():
-    # Test dashboard redirect
+def test_read_lines_uses_bounded_iteration(tmp_path, monkeypatch):
+    import builtins
+    path = tmp_path / 'log'
+    path.write_text(''.join(f'{i}\n' for i in range(1000)))
+    real_open = builtins.open
+    class IterOnly:
+        def __init__(self, stream): self.stream = stream
+        def __enter__(self): return self
+        def __exit__(self, *args): self.stream.close()
+        def __iter__(self): return iter(self.stream)
+        def readlines(self): raise AssertionError('unbounded readlines')
+    monkeypatch.setattr(builtins, 'open', lambda *a, **kw: IterOnly(real_open(*a, **kw)))
+    assert start_suite._read_lines(str(path), 2) == ['998\n', '999\n']
+
+def test_upstreams_helper_rejects_warning_and_invalid_json(monkeypatch):
+    monkeypatch.setattr(start_suite, "_run", lambda *a, **kw: {"ok": True, "returncode": 0, "stdout": '[]', "stderr": "permission denied"})
+    assert start_suite._read_pihole_v6_upstreams() is None
+    monkeypatch.setattr(start_suite, "_run", lambda *a, **kw: {"ok": True, "returncode": 0, "stdout": '["127.0.0.1#5335"]', "stderr": ""})
+    assert start_suite._read_pihole_v6_upstreams() == ["127.0.0.1#5335"]
+
+def test_root_serves_maintenance():
     response = client.get("/", follow_redirects=False)
-    assert response.status_code == 307
-    assert response.headers["location"] == "/dashboard"
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
 
 def test_dashboard_static_files():
     # Only test if dashboard folder is present
@@ -41,8 +61,8 @@ def test_auth_invalid():
     assert response.status_code == 401
     assert response.json()["detail"] == "Unauthorized"
 
-@patch("start_suite._run")
-@patch("start_suite._read_pihole_v6_upstreams")
+@patch.object(start_suite, "_run")
+@patch.object(start_suite, "_read_pihole_v6_upstreams")
 def test_pihole_healthy(mock_upstreams, mock_run):
     def run_side_effect(cmd, **kwargs):
         if cmd == ["pihole", "-v"]:
@@ -61,8 +81,8 @@ def test_pihole_healthy(mock_upstreams, mock_run):
     assert data["pihole_version"] == "Pi-hole v5.0"
     assert "1.1.1.1" in data["upstreams"]
 
-@patch("start_suite._run")
-@patch("start_suite._read_pihole_v6_upstreams")
+@patch.object(start_suite, "_run")
+@patch.object(start_suite, "_read_pihole_v6_upstreams")
 def test_pihole_unavailable(mock_upstreams, mock_run):
     def run_side_effect(cmd, **kwargs):
         if cmd == ["pihole", "-v"]:
@@ -80,7 +100,7 @@ def test_pihole_unavailable(mock_upstreams, mock_run):
     assert data["ftl_active"] is False
     assert data["pihole_version"] == "unknown"
 
-@patch("start_suite._run")
+@patch.object(start_suite, "_run")
 def test_unbound_healthy(mock_run):
     def run_side_effect(cmd, **kwargs):
         if cmd[0:3] == ["systemctl", "is-active", "unbound"]:
@@ -97,7 +117,7 @@ def test_unbound_healthy(mock_run):
     assert data["dig_ok"] is True
     assert data["dig_result"] == "1.1.1.1"
 
-@patch("start_suite._run")
+@patch.object(start_suite, "_run")
 def test_unbound_unavailable(mock_run):
     def run_side_effect(cmd, **kwargs):
         if cmd[0:3] == ["systemctl", "is-active", "unbound"]:
@@ -113,21 +133,21 @@ def test_unbound_unavailable(mock_run):
     assert data["service_active"] is False
     assert data["dig_ok"] is False
 
-@patch("start_suite._http_ok")
+@patch.object(start_suite, "_http_ok")
 def test_netalertx_healthy(mock_http_ok):
     mock_http_ok.return_value = True
     response = client.get("/netalertx", headers=HEADERS)
     assert response.status_code == 200
     assert response.json()["http_reachable"] is True
 
-@patch("start_suite._http_ok")
+@patch.object(start_suite, "_http_ok")
 def test_netalertx_unavailable(mock_http_ok):
     mock_http_ok.return_value = False
     response = client.get("/netalertx", headers=HEADERS)
     assert response.status_code == 200
     assert response.json()["http_reachable"] is False
 
-@patch("start_suite._run")
+@patch.object(start_suite, "_run")
 def test_command_timeout(mock_run):
     def run_side_effect(cmd, **kwargs):
         return {"ok": False, "error": "Command timed out"}
