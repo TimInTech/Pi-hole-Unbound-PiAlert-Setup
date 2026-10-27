@@ -404,7 +404,28 @@ install_staged() {
 }
 
 provision() {
-  local -a args=(--destdir "$DESTDIR" --hosts "$WEB_HOSTS" --lan-cidr "$LAN_CIDR")
+  if [[ -n "$DESTDIR" ]]; then
+    local output target temp
+    for output in config caddy; do
+      if [[ "$output" == config ]]; then
+        target="$(destination /etc/pihole-suite/maintenance-web.json)"
+      else
+        target="$(destination "$CADDY_TARGET")"
+      fi
+      assert_safe_parent_chain "$target"
+      [[ ! -L "$target" ]] || die "refusing symlinked staging target"
+      mkdir -p -- "$(dirname -- "$target")"
+      temp="$(mktemp "$(dirname -- "$target")/.stage.XXXXXX")"
+      if ! /usr/bin/python3 "$SOURCE_DIR/maintenance_install.py" "--print-$output" --hosts "$WEB_HOSTS" --lan-cidr "$LAN_CIDR" > "$temp"; then
+        rm -f -- "$temp"
+        die "staged provisioning failed"
+      fi
+      chmod 0644 "$temp"
+      mv -f -- "$temp" "$target"
+    done
+    return
+  fi
+  local -a args=(--hosts "$WEB_HOSTS" --lan-cidr "$LAN_CIDR")
   [[ "$LOCK_HELD" == false ]] || args+=(--lock-fd 9)
   [[ "$UPGRADE_ONLY" == false ]] || args+=(--skip-export-refresh)
   /usr/bin/python3 "$SOURCE_DIR/maintenance_install.py" "${args[@]}" "$@"

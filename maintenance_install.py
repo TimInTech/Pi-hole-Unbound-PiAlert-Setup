@@ -12,25 +12,6 @@ from pathlib import Path
 
 from maintenance_config import caddy_config, configuration
 
-INSTALL_TARGETS = frozenset({
-    'etc/pihole-suite/maintenance-web.json',
-    'etc/caddy/Caddyfile.d/pihole-maintenance.caddy',
-})
-
-def installation_target(root: Path, name: str) -> Path:
-    if name not in INSTALL_TARGETS or not root.is_absolute():
-        raise ValueError('Invalid installation target')
-    canonical_root = root.resolve(strict=True)
-    if not canonical_root.is_dir() or root != canonical_root:
-        raise ValueError('Unsafe installation root')
-    path = canonical_root / name
-    canonical_path = path.resolve(strict=False)
-    if os.path.commonpath((str(canonical_root), str(canonical_path))) != str(canonical_root) or canonical_path != path:
-        raise ValueError('Unsafe installation path')
-    if path.is_symlink() or any(parent.is_symlink() for parent in path.parents):
-        raise ValueError('Unsafe installation path')
-    return path
-
 
 def atomic_file(path: Path, value: str) -> None:
     if path.is_symlink() or any(parent.is_symlink() for parent in path.parents):
@@ -64,30 +45,36 @@ def detect_network() -> tuple[str, str]:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--destdir', default='')
+    parser.add_argument('--print-config', action='store_true')
+    parser.add_argument('--print-caddy', action='store_true')
     parser.add_argument('--hosts', default='')
     parser.add_argument('--lan-cidr', default='')
     parser.add_argument('--lock-fd', type=int)
     parser.add_argument('--skip-export-refresh', action='store_true')
     args = parser.parse_args()
-    if args.destdir and os.geteuid() == 0:
-        raise ValueError('Staged installation must not run as root')
-    if not args.destdir and os.geteuid() != 0:
+    print_only = args.print_config or args.print_caddy
+    if args.print_config and args.print_caddy:
+        raise ValueError('Choose one output')
+    if not print_only and os.geteuid() != 0:
         raise ValueError('Root required')
-    root = Path(args.destdir or '/')
-    if args.destdir and root == Path('/'):
-        raise ValueError('Staging root must not be /')
-    config_path = installation_target(root, 'etc/pihole-suite/maintenance-web.json')
+    config_path = Path('/etc/pihole-suite/maintenance-web.json')
+    if print_only and not (args.hosts and args.lan_cidr):
+        raise ValueError('Staging requires explicit hosts and LAN CIDR')
     if not args.hosts and not args.lan_cidr and config_path.exists():
+        if config_path.is_symlink() or any(parent.is_symlink() for parent in config_path.parents):
+            raise ValueError('Unsafe installation path')
         raw = json.loads(config_path.read_text())
         hosts, cidr = ','.join(raw['hosts']), raw['lan_cidr']
     else:
         detected_hosts, detected_cidr = detect_network() if not (args.hosts and args.lan_cidr) else ('', '')
         hosts, cidr = args.hosts or detected_hosts, args.lan_cidr or detected_cidr
     config = configuration(hosts, cidr)
+    if print_only:
+        print(json.dumps(config) if args.print_config else caddy_config(config), end='\n' if args.print_config else '')
+        return
     atomic_file(config_path, json.dumps(config) + '\n')
-    atomic_file(installation_target(root, 'etc/caddy/Caddyfile.d/pihole-maintenance.caddy'), caddy_config(config))
-    if not args.destdir and not args.skip_export_refresh:
+    atomic_file(Path('/etc/caddy/Caddyfile.d/pihole-maintenance.caddy'), caddy_config(config))
+    if not args.skip_export_refresh:
         from maintenance_backups import refresh_exports
         from maintenance_runner import RunnerContext
         context = RunnerContext()

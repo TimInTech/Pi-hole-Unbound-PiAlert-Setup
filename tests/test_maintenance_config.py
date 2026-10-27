@@ -1,13 +1,13 @@
 import pytest
-from maintenance_install import installation_target
-
-def test_installation_target_rejects_traversal_and_symlinks(tmp_path):
-    assert installation_target(tmp_path, 'etc/pihole-suite/maintenance-web.json') == tmp_path / 'etc/pihole-suite/maintenance-web.json'
-    with pytest.raises(ValueError):
-        installation_target(tmp_path, '../outside')
-    (tmp_path / 'etc').symlink_to(tmp_path.parent, target_is_directory=True)
-    with pytest.raises(ValueError):
-        installation_target(tmp_path, 'etc/pihole-suite/maintenance-web.json')
+def test_staging_output_does_not_write_files(tmp_path):
+    import json
+    import subprocess
+    import sys
+    from pathlib import Path
+    script = Path(__file__).resolve().parents[1] / 'maintenance_install.py'
+    result = subprocess.run([sys.executable, str(script), '--print-config', '--hosts', 'pi.hole,192.168.178.2', '--lan-cidr', '192.168.178.0/24'], cwd=tmp_path, check=True, capture_output=True, text=True)
+    assert json.loads(result.stdout)['lan_cidr'] == '192.168.178.0/24'
+    assert list(tmp_path.iterdir()) == []
 
 from maintenance_config import caddy_config, configuration
 
