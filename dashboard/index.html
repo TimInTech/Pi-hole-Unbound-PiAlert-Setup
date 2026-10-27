@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pi-hole Suite - Infrastruktur Übersicht</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Authentication Overlay -->
+    <div id="auth-overlay" class="overlay">
+        <div class="glass-panel auth-panel">
+            <h2>Authentifizierung erforderlich</h2>
+            <p>Bitte geben Sie den API-Schlüssel ein, um auf das Dashboard zuzugreifen.</p>
+            <form id="auth-form">
+                <input type="password" id="api-key" placeholder="API-Schlüssel" required autocomplete="off">
+                <button type="submit" class="btn">Anmelden</button>
+            </form>
+            <div id="auth-error" class="error-msg hidden">Ungültiger API-Schlüssel oder Verbindungsfehler.</div>
+        </div>
+    </div>
+
+    <!-- Main Dashboard -->
+    <div id="dashboard" class="dashboard-container hidden">
+        <header class="dashboard-header">
+            <div class="header-title">
+                <h1>DNS Infrastruktur Monitor</h1>
+                <div class="system-status" id="overall-status">
+                    <span class="status-indicator loading"></span>
+                    <span class="status-text">Wird geladen...</span>
+                </div>
+            </div>
+            <div class="header-actions">
+                <span id="last-update" class="last-update">Letzte Aktualisierung: -</span>
+                <button id="logout-btn" class="btn btn-small">Abmelden</button>
+            </div>
+        </header>
+
+        <main class="dashboard-grid">
+            <!-- Pi-hole Card -->
+            <section class="glass-panel card">
+                <div class="card-header">
+                    <h2>Pi-hole</h2>
+                    <span id="pihole-status-indicator" class="status-indicator loading"></span>
+                </div>
+                <div class="card-body">
+                    <div class="info-row">
+                        <span class="label">Status:</span>
+                        <span class="value" id="pihole-status">Wird geladen...</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">Version:</span>
+                        <span class="value" id="pihole-version">-</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">Upstream DNS:</span>
+                        <span class="value" id="pihole-upstreams">-</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">Letzte 100 Anfragen:</span>
+                        <span class="value" id="pihole-recent-queries">-</span>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <a href="#" id="link-pihole-admin" class="btn btn-outline" target="_blank" rel="noopener noreferrer">Admin-Panel öffnen</a>
+                </div>
+            </section>
+
+            <!-- Unbound Card -->
+            <section class="glass-panel card">
+                <div class="card-header">
+                    <h2>Unbound</h2>
+                    <span id="unbound-status-indicator" class="status-indicator loading"></span>
+                </div>
+                <div class="card-body">
+                    <div class="info-row">
+                        <span class="label">Status:</span>
+                        <span class="value" id="unbound-status">Wird geladen...</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">Port:</span>
+                        <span class="value" id="unbound-port">-</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">DNS Auflösung (dig):</span>
+                        <span class="value" id="unbound-dig">-</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">Auflösungsergebnis:</span>
+                        <span class="value value-code" id="unbound-dig-result">-</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- NetAlertX Card -->
+            <section class="glass-panel card">
+                <div class="card-header">
+                    <h2>NetAlertX</h2>
+                    <span id="netalertx-status-indicator" class="status-indicator loading"></span>
+                </div>
+                <div class="card-body">
+                    <div class="info-row">
+                        <span class="label">Status:</span>
+                        <span class="value" id="netalertx-status">Wird geladen...</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">Port:</span>
+                        <span class="value" id="netalertx-port">-</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">Bemerkung:</span>
+                        <span class="value note">Dieses Modul ist optional.</span>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <a href="#" id="link-netalertx" class="btn btn-outline" target="_blank" rel="noopener noreferrer">Interface öffnen</a>
+                </div>
+            </section>
+
+            <!-- System Health Card -->
+            <section class="glass-panel card">
+                <div class="card-header">
+                    <h2>System Suite API</h2>
+                    <span id="system-status-indicator" class="status-indicator loading"></span>
+                </div>
+                <div class="card-body">
+                    <div class="info-row">
+                        <span class="label">Uptime:</span>
+                        <span class="value" id="system-uptime">-</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">API Version:</span>
+                        <span class="value" id="system-version">-</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">Host IP:</span>
+                        <span class="value" id="system-ip">-</span>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

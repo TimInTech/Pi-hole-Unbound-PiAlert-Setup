@@ -30,8 +30,10 @@ import time
 from typing import Any
 from urllib.request import Request, urlopen
 
-from fastapi import Depends, FastAPI, Header, HTTPException
 import uvicorn
+from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 APP_VERSION = "1.0.0"
 START_TIME = time.time()
@@ -55,6 +57,14 @@ def require_api_key(x_api_key: str | None = Header(default=None, alias="X-API-Ke
 
 
 app = FastAPI(title="Pi-hole Suite API", version=APP_VERSION)
+
+# Mount dashboard if it exists
+if os.path.isdir(os.path.join(os.path.dirname(__file__), "dashboard")):
+    app.mount("/dashboard", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "dashboard"), html=True), name="dashboard")
+
+@app.get("/", include_in_schema=False)
+def root_redirect():
+    return RedirectResponse(url="/dashboard")
 
 
 def _read_lines(path: str, limit: int) -> list[str]:
@@ -191,7 +201,7 @@ def _read_pihole_v6_upstreams() -> list[str]:
         return []
 
     # Very small parser: look for upstreams = ["127.0.0.1#5335", ...]
-    m = re.search(r"^upstreams\s*=\s*\[(.*?)\]", t, flags=re.M)
+    m = re.search(r"^upstreams\s*=\s*\[(.*?)\]", t, flags=re.MULTILINE)
     if not m:
         return []
 
@@ -254,7 +264,7 @@ def unbound() -> dict[str, Any]:
         [
             "dig",
             "+short",
-            f"@127.0.0.1",
+            "@127.0.0.1",
             "-p",
             str(unbound_port),
             "+time=1",
