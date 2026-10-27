@@ -22,6 +22,47 @@ run_staged_install() {
 
 run_staged_install
 VENV_TEST_ROOT="$VENV_TEST_ROOT" ROOT_DIR="$ROOT_DIR" bash -c '
+  source "$ROOT_DIR/scripts/install_maintenance_web.sh"
+  sudo() {
+    test "$1" = -n && test "$2" = -u && test "$3" = pihole-suite && test "$4" = --
+    printf "%s\n" "$5" > "$VENV_TEST_ROOT/runtime-checked"
+  }
+  validate_runtime_dependencies /tmp/runtime-python
+  grep -Fqx /tmp/runtime-python "$VENV_TEST_ROOT/runtime-checked"
+'
+VENV_TEST_ROOT="$VENV_TEST_ROOT" ROOT_DIR="$ROOT_DIR" bash -c '
+  source "$ROOT_DIR/scripts/rollback_maintenance_web.sh"
+  printf "UNBOUND_PORT=5353\n" > "$VENV_TEST_ROOT/env-port"
+  test "$(rollback_unbound_port "$VENV_TEST_ROOT/env-port")" = 5353
+  printf "UNBOUND_PORT=bad\n" > "$VENV_TEST_ROOT/env-port"
+  if (rollback_unbound_port "$VENV_TEST_ROOT/env-port") >/dev/null 2>&1; then exit 1; fi
+'
+grep -Fq -- '--validate-only' "$ROOT_DIR/scripts/rollback_maintenance_web.sh"
+grep -Fq 'verify_upgrade_preconditions' "$ROOT_DIR/scripts/install_maintenance_web.sh"
+VENV_TEST_ROOT="$VENV_TEST_ROOT" ROOT_DIR="$ROOT_DIR" bash -c '
+  source "$ROOT_DIR/scripts/rollback_maintenance_web.sh"
+  backup="$VENV_TEST_ROOT/manifest-check"
+  mkdir -p "$backup/files"
+  printf original > "$backup/files/1"
+  digest="$(sha256sum "$backup/files/1" | cut -d " " -f 1)"
+  printf "version|2\n" > "$backup/manifest.tsv"
+  first=true
+  for target in "${TARGETS[@]}"; do
+    if "$first"; then
+      printf "%s|present|files/1|644|0|0|%s\n" "$target" "$digest" >> "$backup/manifest.tsv"
+      first=false
+    else
+      printf "%s|absent|-|-|-|-|-\n" "$target" >> "$backup/manifest.tsv"
+    fi
+  done
+  validate_manifest "$backup"
+  printf changed > "$backup/files/1"
+  if ( validate_manifest "$backup" ) >/dev/null 2>&1; then
+    printf "tampered snapshot was accepted\n" >&2
+    exit 1
+  fi
+'
+VENV_TEST_ROOT="$VENV_TEST_ROOT" ROOT_DIR="$ROOT_DIR" bash -c '
   source "$ROOT_DIR/install.sh"
   systemctl() { return 1; }
   log_error() { :; }
@@ -30,6 +71,16 @@ VENV_TEST_ROOT="$VENV_TEST_ROOT" ROOT_DIR="$ROOT_DIR" bash -c '
   if guard_existing_install "$VENV_TEST_ROOT/existing-pihole" "$VENV_TEST_ROOT/missing-unbound" "$VENV_TEST_ROOT/missing-suite"; then
     exit 1
   fi
+'
+VENV_TEST_ROOT="$VENV_TEST_ROOT" ROOT_DIR="$ROOT_DIR" bash -c '
+  source "$ROOT_DIR/scripts/rollback_maintenance_web.sh"
+  backup="$VENV_TEST_ROOT/restore-mode"
+  mkdir -p "$backup/files" "$VENV_TEST_ROOT/private-dir"
+  chmod 0700 "$VENV_TEST_ROOT/private-dir"
+  printf original > "$backup/files/1"
+  printf "version|2\n%s|present|files/1|644|%s|%s|-\n" "$VENV_TEST_ROOT/private-dir/restored" "$(id -u)" "$(id -g)" > "$backup/manifest.tsv"
+  restore_manifest "$backup"
+  test "$(stat -c %a "$VENV_TEST_ROOT/private-dir")" = 700
 '
 VENV_TEST_ROOT="$VENV_TEST_ROOT" ROOT_DIR="$ROOT_DIR" bash -c '
   source "$ROOT_DIR/scripts/rollback_maintenance_web.sh"

@@ -49,6 +49,7 @@ def main():
     parser.add_argument('--hosts', default='')
     parser.add_argument('--lan-cidr', default='')
     parser.add_argument('--lock-fd', type=int)
+    parser.add_argument('--skip-export-refresh', action='store_true')
     args = parser.parse_args()
     if not args.destdir and os.geteuid() != 0:
         raise ValueError('Root required')
@@ -63,7 +64,7 @@ def main():
     config = configuration(hosts, cidr)
     atomic_file(config_path, json.dumps(config) + '\n')
     atomic_file(root / 'etc/caddy/Caddyfile.d/pihole-maintenance.caddy', caddy_config(config))
-    if not args.destdir:
+    if not args.destdir and not args.skip_export_refresh:
         from maintenance_backups import refresh_exports
         from maintenance_runner import RunnerContext
         context = RunnerContext()

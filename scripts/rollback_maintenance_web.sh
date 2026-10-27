@@ -107,7 +107,9 @@ restore_manifest() {
       present)
         assert_safe_parent_chain "$target"
         [[ ! -L "$target" ]] || die "refusing to replace symlink target"
-        install -d -o root -g root -m 0755 "$(dirname -- "$target")"
+        if [[ ! -d "$(dirname -- "$target")" ]]; then
+          install -d -o root -g root -m 0755 "$(dirname -- "$target")"
+        fi
         install -o "$uid" -g "$gid" -m "$mode" -- "$backup_dir/$saved" "$target"
         ;;
       absent)
@@ -135,8 +137,26 @@ restore_app_tree() {
   fi
 }
 
+rollback_unbound_port() {
+  local file="$1" value="" count=0 line
+  if [[ -f "$file" ]]; then
+    while IFS= read -r line; do
+      [[ "$line" == UNBOUND_PORT=* ]] || continue
+      value="${line#UNBOUND_PORT=}"
+      value="${value#\"}"
+      value="${value%\"}"
+      count=$((count + 1))
+    done < "$file"
+  fi
+  [[ "$count" -le 1 ]] || die "ambiguous UNBOUND_PORT"
+  [[ "$count" != 0 ]] || value=5335
+  [[ "$value" =~ ^[0-9]{1,5}$ ]] || die "invalid UNBOUND_PORT"
+  (( 10#$value >= 1 && 10#$value <= 65535 )) || die "invalid UNBOUND_PORT"
+  printf '%s\n' "$value"
+}
+
 validate_and_activate() {
-  local unit artifact
+  local unit artifact unbound_port
   local -a python_artifacts=()
   for artifact in /usr/local/libexec/pihole-maintenance-runner /var/lib/pihole-suite/app/start_suite.py /var/lib/pihole-suite/app/maintenance_web.py; do
     [[ -f "$artifact" ]] && python_artifacts+=("$artifact")
@@ -156,10 +176,17 @@ validate_and_activate() {
   /usr/bin/systemctl is-active --quiet pihole-FTL.service
   /usr/bin/systemctl is-active --quiet unbound.service
   /usr/bin/dig +time=3 +tries=1 +short @127.0.0.1 example.com A | /usr/bin/grep -Eq '^[0-9.]+'
-  /usr/bin/dig +time=3 +tries=1 +short @127.0.0.1 -p 5335 example.com A | /usr/bin/grep -Eq '^[0-9.]+'
+  unbound_port="$(rollback_unbound_port /etc/pihole-suite/pihole-suite.env)"
+  /usr/bin/dig +time=3 +tries=1 +short @127.0.0.1 -p "$unbound_port" example.com A | /usr/bin/grep -Eq '^[0-9.]+'
 }
 
 main() {
+  if [[ $# -eq 3 && "$1" == '--validate-only' && "$2" == '--backup-dir' ]]; then
+    local validated_backup
+    validated_backup="$(validate_backup_dir "$3")"
+    validate_manifest "$validated_backup"
+    return
+  fi
   [[ $# -eq 2 && "$1" == '--backup-dir' ]] || die "usage: $0 --backup-dir /var/backups/pihole-suite-deploy/NAME"
   local backup_dir
   backup_dir="$(validate_backup_dir "$2")"

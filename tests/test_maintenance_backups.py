@@ -8,6 +8,12 @@ from test_maintenance_runner import held_lock, make_context
 from maintenance_backups import delete_backup, read_index, refresh_exports
 from maintenance_runner import run_job
 
+def test_utc_timestamp_and_stream_hash_work_without_newer_python_apis():
+    import io
+    from maintenance_backups import parse_timestamp, stream_sha256
+    assert parse_timestamp('2026-09-07T12:00:00Z').utcoffset().total_seconds() == 0
+    assert stream_sha256(io.BytesIO(b'abc')) == hashlib.sha256(b'abc').hexdigest()
+
 
 def test_export_index_and_confirmed_deletion(tmp_path):
     context, _ = make_context(tmp_path)

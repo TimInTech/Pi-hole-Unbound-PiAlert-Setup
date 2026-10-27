@@ -25,7 +25,7 @@ from fastapi.responses import (
 )
 from starlette.concurrency import run_in_threadpool
 
-from maintenance_backups import EXPORT_ROOT, read_index, safe_file, valid_id
+from maintenance_backups import EXPORT_ROOT, read_index, safe_file, stream_sha256, valid_id
 
 SESSION_IDLE_SECONDS = 30 * 60
 SESSION_MAX_SECONDS = 8 * 60 * 60
@@ -421,7 +421,7 @@ def create_maintenance_router(settings: MaintenanceSettings) -> APIRouter:
             raise HTTPException(status_code=404, detail='Backup not found') from None
         except (OSError, ValueError):
             raise HTTPException(status_code=503, detail='Backup unavailable') from None
-        if os.fstat(handle.fileno()).st_size != entry['size'] or hashlib.file_digest(handle, 'sha256').hexdigest() != entry['sha256']:
+        if os.fstat(handle.fileno()).st_size != entry['size'] or stream_sha256(handle) != entry['sha256']:
             handle.close()
             raise HTTPException(status_code=503, detail='Backup verification failed')
         handle.seek(0)

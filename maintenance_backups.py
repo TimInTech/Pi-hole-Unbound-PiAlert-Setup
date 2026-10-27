@@ -17,6 +17,15 @@ from pathlib import Path
 EXPORT_ROOT = Path('/var/lib/pihole-suite/exports')
 BACKUP_ID = re.compile(r'\d{8}T\d{6}Z-\d{8}T\d{12}Z-[a-f0-9]{32}')
 
+def parse_timestamp(value: str):
+    return dt.datetime.fromisoformat(value[:-1] + '+00:00' if value.endswith('Z') else value)
+
+def stream_sha256(handle) -> str:
+    digest = hashlib.sha256()
+    while chunk := handle.read(65536):
+        digest.update(chunk)
+    return digest.hexdigest()
+
 
 def valid_id(value: str) -> bool:
     return isinstance(value, str) and BACKUP_ID.fullmatch(value) is not None
@@ -55,7 +64,7 @@ def read_index(root: Path) -> list[dict]:
             raise ValueError('Invalid index')
         if not isinstance(entry['created_at'], str) or len(entry['created_at']) > 40:
             raise ValueError('Invalid index')
-        dt.datetime.fromisoformat(entry['created_at'])
+        parse_timestamp(entry['created_at'])
     return entries
 
 
@@ -73,7 +82,7 @@ def _verified_backup(context, backup_id: str) -> Path:
         manifest = json.loads((candidate / 'manifest.json').read_text())
         if backup_id.split('-', 1)[1] != manifest['job_id']:
             raise ValueError('Backup ID mismatch')
-        dt.datetime.fromisoformat(manifest['created_at'])
+        parse_timestamp(manifest['created_at'])
     except RuntimeError as error:
         raise ValueError('Invalid backup') from error
     return candidate
@@ -139,7 +148,7 @@ def refresh_exports(context) -> None:
                 if member.name == 'manifest.json':
                     if source.read() != (backup / 'manifest.json').read_bytes():
                         raise ValueError('Export manifest mismatch')
-                elif member.name not in expected or member.size != expected[member.name]['size'] or hashlib.file_digest(source, 'sha256').hexdigest() != expected[member.name]['sha256']:
+                elif member.name not in expected or member.size != expected[member.name]['size'] or stream_sha256(source) != expected[member.name]['sha256']:
                     raise ValueError('Export verification failed')
             if covered != set(expected) | {'manifest.json'}:
                 raise ValueError('Incomplete export')

@@ -9,6 +9,7 @@ BACKUP_DIR=""
 WEB_HOSTS=""
 LAN_CIDR=""
 LOCK_HELD=false
+UPGRADE_ONLY=false
 
 readonly DEPLOY_BACKUP_ROOT="/var/backups/pihole-suite-deploy"
 readonly APP_DIR="/var/lib/pihole-suite/app"
@@ -48,7 +49,7 @@ readonly -a TARGETS=(
 )
 
 usage() {
-  printf '%s\n' "Usage: $0 [--destdir ABSOLUTE_PATH] [--backup-only | --backup-dir ABSOLUTE_PATH] [--hosts HOST,IP] [--lan-cidr CIDR]"
+  printf '%s\n' "Usage: $0 [--upgrade-only] [--destdir ABSOLUTE_PATH] [--backup-only | --backup-dir ABSOLUTE_PATH] [--hosts HOST,IP] [--lan-cidr CIDR]"
 }
 
 die() {
@@ -66,6 +67,10 @@ parse_args() {
         ;;
       --backup-only)
         BACKUP_ONLY=true
+        shift
+        ;;
+      --upgrade-only)
+        UPGRADE_ONLY=true
         shift
         ;;
       --hosts|--lan-cidr)
@@ -96,6 +101,7 @@ parse_args() {
   [[ "$BACKUP_ONLY" == false || -z "$DESTDIR" ]] || die "--backup-only cannot use --destdir"
   [[ -z "$BACKUP_DIR" || ( "$BACKUP_DIR" = /* && "$BACKUP_DIR" != "/" ) ]] || die "--backup-dir must be a non-root absolute path"
   [[ "$BACKUP_ONLY" == false || -z "$BACKUP_DIR" ]] || die "choose either --backup-only or --backup-dir"
+  [[ "$UPGRADE_ONLY" == false || ( -z "$BACKUP_DIR" && "$BACKUP_ONLY" == false ) ]] || die "upgrade-only requires a fresh locked snapshot"
 }
 
 destination() {
@@ -271,6 +277,34 @@ validate_existing_backup_dir() {
   backup_real="$(realpath -e -- "$BACKUP_DIR")"
   [[ "$(dirname -- "$backup_real")" == "$root_real" ]] || die "backup directory must be directly below $DEPLOY_BACKUP_ROOT"
   [[ -f "$backup_real/manifest.tsv" && ! -L "$backup_real/manifest.tsv" ]] || die "backup directory has no safe manifest"
+  bash "$SOURCE_DIR/scripts/rollback_maintenance_web.sh" --validate-only --backup-dir "$backup_real" || die "deployment backup validation failed"
+}
+
+validate_runtime_dependencies() {
+  sudo -n -u pihole-suite -- "$1" -I -c 'import fastapi, uvicorn, httpx'
+}
+
+verify_upgrade_preconditions() {
+  local path unit python_real unbound_port
+  for unit in caddy pihole-suite pihole-FTL unbound; do
+    systemctl is-active --quiet "$unit" || die "upgrade requires active service: $unit"
+  done
+  for unit in caddy pihole-suite; do
+    systemctl is-enabled --quiet "$unit" || die "upgrade requires enabled service: $unit"
+  done
+  for path in "$APP_DIR" "$APP_DIR/web" /var/lib/pihole-suite/venv; do
+    assert_safe_parent_chain "$path/.guard"
+    [[ -d "$path" && ! -L "$path" ]] || die "missing safe runtime directory: $path"
+    [[ "$(stat -c %u "$path")" == 0 ]] || die "runtime directory is not root-owned: $path"
+    [[ -z "$(find -P "$path" \( ! -user root -o -perm /022 \) ! -type l -print -quit)" ]] || die "untrusted runtime content: $path"
+  done
+  python_real="$(realpath -e /var/lib/pihole-suite/venv/bin/python)" || die "missing Python interpreter"
+  [[ "$python_real" == /usr/bin/python3* && -f "$python_real" ]] || die "untrusted Python interpreter"
+  [[ "$(stat -c %u "$python_real")" == 0 && -z "$(find -P "$python_real" -perm /022 -print -quit)" ]] || die "unsafe Python interpreter permissions"
+  validate_runtime_dependencies /var/lib/pihole-suite/venv/bin/python || die "existing Python runtime lacks required dependencies"
+  /usr/bin/dig +time=3 +tries=1 +short @127.0.0.1 example.com A | /usr/bin/grep -Eq '^[0-9.]+$' || die "Pi-hole DNS baseline failed"
+  unbound_port="$(bash -c 'source "$1"; rollback_unbound_port "$2"' _ "$SOURCE_DIR/scripts/rollback_maintenance_web.sh" /etc/pihole-suite/pihole-suite.env)" || die "invalid Unbound port configuration"
+  /usr/bin/dig +time=3 +tries=1 +short @127.0.0.1 -p "$unbound_port" example.com A | /usr/bin/grep -Eq '^[0-9.]+$' || die "Unbound DNS baseline failed"
 }
 
 validate_live_installation() {
@@ -286,7 +320,9 @@ validate_live_installation() {
 activate_live_installation() {
   local attempt listeners
   /usr/bin/systemctl daemon-reload
-  /usr/bin/systemctl enable --now caddy
+  if [[ "$UPGRADE_ONLY" == false ]]; then
+    /usr/bin/systemctl enable --now caddy
+  fi
   /usr/bin/systemctl reload caddy
   /usr/bin/systemctl restart pihole-suite.service
   /usr/bin/systemctl is-active --quiet pihole-suite.service
@@ -310,24 +346,30 @@ install_live() {
   for command in /usr/bin/python3 /usr/sbin/visudo /usr/bin/systemd-analyze /usr/bin/systemctl /usr/bin/curl /usr/bin/ss /usr/bin/grep; do
     [[ -x "$command" ]] || die "required command unavailable: $command"
   done
-  prepare_runtime_directories
-  if [[ -n "$BACKUP_DIR" ]]; then
-    validate_existing_backup_dir
+  if [[ "$UPGRADE_ONLY" == true ]]; then
+    verify_upgrade_preconditions
   else
-    BACKUP_DIR="$(create_deployment_backup)"
+    [[ ! -e "$APP_DIR/start_suite.py" ]] || die "existing suite requires --upgrade-only"
+    prepare_runtime_directories
   fi
-  printf 'Deployment snapshot: %s\n' "$BACKUP_DIR"
   /usr/bin/python3 -c 'import os, stat; fd = os.open("/run/lock/pihole-maintenance-web.lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600); metadata = os.fstat(fd); assert metadata.st_uid == 0 and stat.S_ISREG(metadata.st_mode); os.close(fd)'
   exec 9<>/run/lock/pihole-maintenance-web.lock
   /usr/bin/flock --nonblock 9 || die "maintenance is active; retry after completion"
   LOCK_HELD=true
-  trap rollback_failed_install EXIT
-  /usr/bin/systemctl stop pihole-suite.service
   for action in check backup update; do
     if /usr/bin/systemctl is-active --quiet "pihole-maintenance-$action.service"; then
       die "maintenance is active; retry after completion"
     fi
   done
+  if [[ -n "$BACKUP_DIR" ]]; then
+    validate_existing_backup_dir
+  else
+    BACKUP_DIR="$(create_deployment_backup)"
+    validate_existing_backup_dir
+  fi
+  printf 'Deployment snapshot: %s\n' "$BACKUP_DIR"
+  trap rollback_failed_install EXIT
+  /usr/bin/systemctl stop pihole-suite.service
   ensure_caddy_import
   local target
   for target in "${TARGETS[@]}"; do
@@ -364,6 +406,7 @@ install_staged() {
 provision() {
   local -a args=(--destdir "$DESTDIR" --hosts "$WEB_HOSTS" --lan-cidr "$LAN_CIDR")
   [[ "$LOCK_HELD" == false ]] || args+=(--lock-fd 9)
+  [[ "$UPGRADE_ONLY" == false ]] || args+=(--skip-export-refresh)
   /usr/bin/python3 "$SOURCE_DIR/maintenance_install.py" "${args[@]}" "$@"
 }
 
@@ -382,4 +425,6 @@ main() {
   install_live
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

@@ -110,6 +110,19 @@ dig +short @127.0.0.1 -p 5335 example.com
 Der Gesamtinstaller verweigert einen Lauf bei erkannter bestehender Installation,
 weil sein Rollback DNS, Resolver, Dienste und Python-Environment nicht vollständig
 abdeckt. Ein Upgrade erfordert eine separat geprüfte Migration und Sicherung.
+Für eine bereits laufende Suite steht der eingeschränkte Web-Upgradepfad bereit:
+
+```bash
+sudo ./scripts/install_maintenance_web.sh --upgrade-only
+```
+
+Er setzt laufendes Pi-hole, Unbound, Caddy und die Suite sowie aktivierte Webdienste
+voraus, prüft DNS, das vorhandene root-eigene Python-Environment und erstellt
+unter Wartungssperre ein validiertes Deployment-Backup. Er ändert weder DNS- noch
+Resolverkonfiguration oder das Python-Environment. Caddy wird neu geladen und die
+Suite neu gestartet. Der Pfad ersetzt kein vollständiges Systembackup und muss vor
+einer produktiven Nutzung auf dem Zielsystem überprüft werden.
+
 Der Web-Installer erstellt ein root-eigenes Deployment-Backup unter
 `/var/backups/pihole-suite-deploy/`. Es deckt die im Manifest aufgeführten
 Web-Dateien ab, ersetzt jedoch kein vollständiges Systembackup. Für einen Rollback zuerst den
