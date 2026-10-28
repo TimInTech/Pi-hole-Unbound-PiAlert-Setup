@@ -57,6 +57,12 @@ def test_upstreams_helper_rejects_warning_and_invalid_json(monkeypatch):
     monkeypatch.setattr(start_suite, "_run", lambda *a, **kw: {"ok": True, "returncode": 0, "stdout": '["127.0.0.1#5335"]', "stderr": ""})
     assert start_suite._read_pihole_v6_upstreams() == ["127.0.0.1#5335"]
 
+def test_upstreams_helper_runs_without_privilege_escalation(monkeypatch):
+    calls = []
+    monkeypatch.setattr(start_suite, "_run", lambda cmd, **kwargs: calls.append(cmd) or {"ok": True, "returncode": 0, "stdout": '["127.0.0.1#5335"]', "stderr": ""})
+    assert start_suite._read_pihole_v6_upstreams() == ["127.0.0.1#5335"]
+    assert calls == [["/usr/local/libexec/pihole-suite-upstreams"]]
+
 def test_root_serves_maintenance():
     response = client.get("/", follow_redirects=False)
     assert response.status_code == 200

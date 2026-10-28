@@ -217,7 +217,7 @@ def _parse_dhcp_leases(limit: int) -> list[dict[str, Any]] | None:
 
 
 def _read_pihole_v6_upstreams() -> list[str] | None:
-    result = _run(["/usr/bin/sudo", "-n", "/usr/local/libexec/pihole-suite-upstreams"], timeout=2.0)
+    result = _run(["/usr/local/libexec/pihole-suite-upstreams"], timeout=2.0)
     if not result.get("ok") or result.get("returncode") != 0 or result.get("stderr"):
         return None
     try:
