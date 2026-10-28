@@ -85,8 +85,6 @@ sudo pihole-rescue           # global command (symlink in /usr/local/bin)
 sudo bash scripts/rescue_menu.sh
 ```
 
-![Rescue Menu](assets/screenshot_rescue_menu.png)
-
 ### Options
 
 #### Status & Diagnostics
@@ -96,10 +94,6 @@ sudo bash scripts/rescue_menu.sh
 | 1 | System status check | Service status (pihole-FTL, unbound), DNS tests, open ports, RAM, CPU temp |
 | 2 | DNS loop / upstream check | Detects DNS loops, tests blocking, verifies Unbound upstream |
 | 3 | Nightly / diagnostic test | Runs `scripts/nightly_test.sh` (or inline fallback) |
-
-![System Status](assets/screenshot_status_check.png)
-
-![DNS Check](assets/screenshot_dns_check.png)
 
 #### Backup & Restore
 

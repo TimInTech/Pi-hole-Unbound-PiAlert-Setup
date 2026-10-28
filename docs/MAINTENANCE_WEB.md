@@ -1,15 +1,14 @@
 # Pi-hole-Wartungsoberfläche
 
 Die Wartungsoberfläche stellt genau drei kontrollierte Aktionen bereit:
-Systemcheck, verifiziertes Backup und Update. Sie ist nach erfolgreicher
-Produktionsabnahme unter `https://pi.hole:8443/` sowie
-`https://192.168.178.2:8443/` erreichbar.
+Systemcheck, verifiziertes Backup und Update. Der Zugriff erfolgt über den
+konfigurierten Caddy-Host: `https://<pihole-host>:8443/`.
 
 ## Voraussetzungen und Installation
 
 Der Webdienst bleibt verbindlich auf `127.0.0.1:8090`; ein abweichender
 `SUITE_HOST` wird beim Start abgewiesen. Caddy veröffentlicht ausschließlich
-HTTPS auf Port 8443 für `192.168.178.0/24` und Loopback. Für Caddy auf Debian
+HTTPS auf Port 8443 für das konfigurierte private LAN und Loopback. Für Caddy auf Debian
 oder Raspberry Pi OS ist das offizielle Stable-Repository zu verwenden:
 
 ```bash

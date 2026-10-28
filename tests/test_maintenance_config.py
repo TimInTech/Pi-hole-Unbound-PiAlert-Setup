@@ -5,16 +5,16 @@ def test_staging_output_does_not_write_files(tmp_path):
     import sys
     from pathlib import Path
     script = Path(__file__).resolve().parents[1] / 'maintenance_install.py'
-    result = subprocess.run([sys.executable, str(script), '--print-config', '--hosts', 'pi.hole,192.168.178.2', '--lan-cidr', '192.168.178.0/24'], cwd=tmp_path, check=True, capture_output=True, text=True)
-    assert json.loads(result.stdout)['lan_cidr'] == '192.168.178.0/24'
+    result = subprocess.run([sys.executable, str(script), '--print-config', '--hosts', 'pi.hole,192.168.1.2', '--lan-cidr', '192.168.1.0/24'], cwd=tmp_path, check=True, capture_output=True, text=True)
+    assert json.loads(result.stdout)['lan_cidr'] == '192.168.1.0/24'
     assert list(tmp_path.iterdir()) == []
 
 from maintenance_config import caddy_config, configuration
 
 
 def test_network_config_and_route_boundary():
-    config = configuration('pi.hole,192.168.178.2', '192.168.178.0/24')
-    assert config['allowed_origins'] == ['https://pi.hole:8443', 'https://192.168.178.2:8443']
+    config = configuration('pi.hole,192.168.1.2', '192.168.1.0/24')
+    assert config['allowed_origins'] == ['https://pi.hole:8443', 'https://192.168.1.2:8443']
     caddy = caddy_config(config)
     assert 'path / /maintenance.css /maintenance.js /api/session /api/session/logout /api/maintenance/*' in caddy
     assert 'respond "Not found" 404' in caddy

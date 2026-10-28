@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Public URLs are exactly https://pi.hole:8443/ and https://192.168.178.2:8443/; Uvicorn remains on 127.0.0.1:8090.
+- Public URLs use the configured Caddy host on port 8443; Uvicorn remains on 127.0.0.1:8090.
 - The FastAPI service runs as pihole-suite, never as root, and accepts no arbitrary command, path, package, URL, or shell input.
 - Allowed root actions are exactly check, backup, and update; they are serialized with /run/lock/pihole-maintenance-web.lock.
 - Update order is verified backup, apt-get update, noninteractive apt-get -y upgrade, pihole -up, pihole -g, then full check; no autoremove and no reboot.
@@ -22,7 +22,7 @@
 - All mutating API calls require an authenticated session, an exact allowed Origin, and a matching CSRF token.
 - Production OpenAPI/Swagger is disabled and CORS is not enabled.
 - Every Bash file added or changed uses set -euo pipefail.
-- Production deployment is not complete until all three actions have been started through the HTTPS API and independently verified on pi@192.168.178.2.
+- Production deployment is not complete until all three actions have been started through the HTTPS API and independently verified on the target Raspberry Pi.
 
 ---
 

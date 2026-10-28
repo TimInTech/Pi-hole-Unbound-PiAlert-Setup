@@ -18,6 +18,7 @@ report.md
 
 # Python cache
 __pycache__/
+.pytest_cache/
 *.pyc
 
 # VS Code

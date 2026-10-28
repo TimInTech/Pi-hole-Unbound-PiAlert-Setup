@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- Authenticated read-only DNS dashboard at `/dashboard/` alongside the separate maintenance panel at `/`.
+- Production setup and API data-availability notes in both READMEs.
 - **Rescue & Backup Menu** (`scripts/rescue_menu.sh` v1.0.0) — standalone interactive recovery tool with:
   - System status check (services, DNS, ports, temperature)
   - DNS loop / upstream check with blocking test
@@ -20,8 +22,16 @@ All notable changes to this project will be documented in this file.
 - **Unified output format**: `tools/pihole_maintenance_pro.sh` `run_step()` now uses `log_ok`/`log_warn`/`log_err` from `scripts/lib/ui.sh`
 
 ### Changed
+- Existing deployments with the maintenance panel can use `--upgrade-only` without changing DNS configuration or the Python environment.
+- README platform, Python, dashboard, maintenance, and repository-structure details now match the current implementation.
 - Console menu Exit moved from [7] to [8] to accommodate new Rescue entry
 - `action_check_mode()` in console menu now also validates rescue_menu availability
+
+### Security
+- Bound DNS-log line parsing and keep the browser API key in memory only.
+- Grant the suite service read access to Pi-hole logs through its supplementary group.
+- Restrict the test workflow token to `contents: read`.
+- Removed outdated screenshots that showed failed checks or the private LAN address.
 
 ## [0.2.0] — 2026-01-02
 
