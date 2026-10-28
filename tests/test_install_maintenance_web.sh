@@ -129,6 +129,7 @@ VENV_TEST_ROOT="$VENV_TEST_ROOT" ROOT_DIR="$ROOT_DIR" bash -c '
 test -f "$DESTDIR/var/lib/pihole-suite/app/dashboard/index.html"
 test -f "$DESTDIR/var/lib/pihole-suite/app/dashboard/app.js"
 test -f "$DESTDIR/var/lib/pihole-suite/app/dashboard/style.css"
+grep -Fqx 'SupplementaryGroups=pihole' "$DESTDIR/etc/systemd/system/pihole-suite.service.d/maintenance-web.conf"
 first_tree="$({ cd "$DESTDIR" && find . -type f -print0 | sort -z | xargs -0 sha256sum; })"
 run_staged_install
 second_tree="$({ cd "$DESTDIR" && find . -type f -print0 | sort -z | xargs -0 sha256sum; })"
