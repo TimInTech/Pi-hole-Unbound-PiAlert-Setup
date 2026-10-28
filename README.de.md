@@ -34,7 +34,7 @@ Pi-hole blockiert Werbung und Tracker. Unbound löst DNS-Anfragen rekursiv auf �
 
 **Dokumentation zuletzt geprüft:** 2026-10-28
 
-**Letztes Projektupdate:** 2026-10-28 — [PR #35](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/pull/35) aktualisiert die Dokumentation und entfernt veraltete Repository-Artefakte. Die Dashboard- und Wartungsupdates sind in [PR #32](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/pull/32), [PR #33](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/pull/33) und [PR #34](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/pull/34) dokumentiert.
+**Letztes Projektupdate:** 2026-10-28 — [PR #37](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/pull/37) behebt die Upstream-Erkennung unter dem Systemd-Hardening. Die README-Aktualisierung und Bereinigung veralteter Artefakte stehen in [PR #35](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/pull/35); Dashboard und Wartungsoberfläche sind in [PR #32](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/pull/32), [PR #33](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/pull/33) und [PR #34](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/pull/34) dokumentiert.
 
 - Das lesende DNS-Dashboard wurde mit der authentifizierten Wartungsoberfläche integriert.
 - Updates wurden abgesichert, DNS-Logzeilen begrenzt, der API-Key aus dauerhaftem Browser-Speicher entfernt und der Logzugriff auf eine Leseberechtigung beschränkt.

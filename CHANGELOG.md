@@ -27,6 +27,10 @@ All notable changes to this project will be documented in this file.
 - Console menu Exit moved from [7] to [8] to accommodate new Rescue entry
 - `action_check_mode()` in console menu now also validates rescue_menu availability
 
+### Fixed
+- Read Pi-hole's configured DNS upstream through the suite service's existing read-only `pihole` group access, avoiding a `sudo` call that failed under systemd hardening.
+- Removed the now-unneeded upstream-helper sudoers permission.
+
 ### Security
 - Bound DNS-log line parsing and keep the browser API key in memory only.
 - Grant the suite service read access to Pi-hole logs through its supplementary group.
