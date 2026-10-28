@@ -140,21 +140,34 @@ def _parse_pihole_log(limit: int) -> list[dict[str, Any]] | None:
         return None
 
     out: list[dict[str, Any]] = []
-    # Example patterns differ by versions; keep it permissive.
-    # Jan  1 12:00:00 dnsmasq[1234]: query[A] example.com from 192.168.1.2
-    rx = re.compile(
-        r"^(?P<ts>\w{3}\s+\d+\s+\d+:\d+:\d+).*(query\[[A-Z]+\])\s+(?P<q>[^\s]+)\s+from\s+(?P<client>[^\s]+)"
-    )
-
     for line in reversed(lines):
-        m = rx.search(line)
-        if not m:
+        # A syslog record is short. Ignore oversized/corrupt records before
+        # parsing, and use bounded splitting instead of regex on log content.
+        if len(line) > 8192:
+            continue
+        marker = " query["
+        marker_at = line.find(marker)
+        if marker_at < 0:
+            continue
+        prefix = line[:marker_at]
+        daemon_at = prefix.find(" dnsmasq[")
+        timestamp = " ".join((prefix[:daemon_at] if daemon_at >= 0 else prefix).split()[-3:])
+        query_start = line.find("] ", marker_at)
+        if query_start < 0:
+            continue
+        query_end = line.find(" from ", query_start + 2)
+        if query_end < 0:
+            continue
+        query = line[query_start + 2:query_end]
+        client_fields = line[query_end + 6:].split(None, 1)
+        client = client_fields[0] if client_fields else ""
+        if not timestamp or not query or not client:
             continue
         out.append(
             {
-                "timestamp": m.group("ts"),
-                "client": m.group("client"),
-                "query": m.group("q"),
+                "timestamp": timestamp,
+                "client": client,
+                "query": query,
                 "action": "query",
             }
         )

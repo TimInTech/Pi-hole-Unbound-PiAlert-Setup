@@ -1,7 +1,7 @@
 const assert = require('assert');
 const nodes = new Map();
 function element(id) {
-    if (!nodes.has(id)) nodes.set(id, { className: '', textContent: '', classList: {add(){}, remove(){}}, addEventListener(){}, focus(){} });
+    if (!nodes.has(id)) nodes.set(id, { className: '', textContent: '', focused: false, classList: {add(){}, remove(){}}, addEventListener(){}, focus(){this.focused = true;} });
     return nodes.get(id);
 }
 const data = {
@@ -17,11 +17,12 @@ const document = {
     querySelector(selector) { return element(selector.slice(1)); }
 };
 global.document = document;
-global.sessionStorage = {getItem: () => 'key'};
+let removedSessionKey = false;
+global.sessionStorage = {removeItem(key) { if (key === 'suite_api_key') removedSessionKey = true; }};
 global.fetch = async url => ({ok: true, json: async () => data[url]});
 global.setTimeout = () => {};
 require('../dashboard/app.js');
 setImmediate(() => {
-    assert.strictEqual(element('overall-status .status-indicator').className, 'status-indicator healthy');
-    assert.strictEqual(element('overall-status .status-text').textContent, 'Alle Kernsysteme gesund');
+    assert.strictEqual(removedSessionKey, true);
+    assert.strictEqual(element('api-key').focused, true);
 });

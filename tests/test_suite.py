@@ -31,6 +31,12 @@ def test_missing_dns_log_is_unavailable_not_zero(monkeypatch):
     assert client.get('/dns', headers=HEADERS).status_code == 503
     assert client.get('/leases', headers=HEADERS).status_code == 503
 
+def test_dns_log_skips_oversized_lines_and_parses_queries(monkeypatch):
+    lines = ['x' * 100000 + ' query[A] attack.example from 10.0.0.1',
+             'Jan  1 12:00:00 dnsmasq[1234]: query[A] example.com from 192.168.1.2\n']
+    monkeypatch.setattr(start_suite, '_read_lines', lambda *args: lines)
+    assert start_suite._parse_pihole_log(5) == [{'timestamp': 'Jan 1 12:00:00', 'client': '192.168.1.2', 'query': 'example.com', 'action': 'query'}]
+
 def test_read_lines_uses_bounded_iteration(tmp_path, monkeypatch):
     import builtins
     path = tmp_path / 'log'

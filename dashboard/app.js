@@ -9,15 +9,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const lastUpdateEl = document.getElementById('last-update');
 
     // API Key management
-    let apiKey = sessionStorage.getItem('suite_api_key');
+    // Do not persist the permanent API key in browser storage. It is held only
+    // for this page lifetime and must be entered again after a reload.
+    sessionStorage.removeItem('suite_api_key');
+    let apiKey = null;
 
     // Initialization
-    if (apiKey) {
-        showDashboard();
-        fetchData();
-    } else {
-        showAuth();
-    }
+    showAuth();
 
     // Event Listeners
     authForm.addEventListener('submit', async (e) => {
@@ -33,7 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (res.ok) {
                 apiKey = key;
-                sessionStorage.setItem('suite_api_key', key);
+                apiKeyInput.value = '';
                 authError.classList.add('hidden');
                 showDashboard();
                 fetchData();
@@ -48,7 +46,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     logoutBtn.addEventListener('click', () => {
-        sessionStorage.removeItem('suite_api_key');
         apiKey = null;
         apiKeyInput.value = '';
         showAuth();
