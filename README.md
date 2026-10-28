@@ -9,7 +9,7 @@
 [![Pi-hole](https://img.shields.io/badge/Pi--hole-v6.x-red?style=for-the-badge&logo=pihole)](https://pi-hole.net/)
 [![Unbound](https://img.shields.io/badge/Unbound-DNS-orange?style=for-the-badge)](https://nlnetlabs.nl/projects/unbound/)
 [![Debian](https://img.shields.io/badge/Debian-Bookworm%2FTrixie-red?style=for-the-badge&logo=debian)](https://debian.org/)
-[![Python](https://img.shields.io/badge/Python-3.12+-blue?style=for-the-badge&logo=python)](https://python.org/)
+[![Python](https://img.shields.io/badge/Python-3.10+-blue?style=for-the-badge&logo=python)](https://python.org/)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=000&style=for-the-badge)](https://buymeacoffee.com/timintech)
 
 <img src="https://skillicons.dev/icons?i=linux,debian,raspberrypi,bash,python,fastapi" alt="Tech Stack" />
@@ -31,6 +31,19 @@ Client → Pi-hole (port 53) → Unbound (port 5335) → Internet
 ```
 
 Pi-hole handles ad/tracker blocking; Unbound handles recursive DNS resolution with full DNSSEC validation — no third-party DNS resolver required.
+
+## Project Status and Latest Update
+
+**Documentation last checked:** 2026-10-28
+
+**Latest project update:** 2026-10-28 — [PR #32](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/pull/32), [PR #33](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/pull/33), and [PR #34](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/pull/34).
+
+- Integrated the read-only DNS dashboard with the authenticated maintenance panel.
+- Hardened upgrades, bounded DNS-log parsing, kept the API key out of persistent browser storage, and enabled least-privilege log access.
+- Restricted the test workflow token to read-only repository contents.
+- Rechecked production DNS and DNSSEC behavior, both web interfaces, and authenticated API routes.
+
+NetAlertX is optional. It was not configured on the production system last checked, so `/devices` reports HTTP 503 rather than inventing an empty device list. Pi-hole and Unbound monitoring and DNS are independent of this optional feature. See [CHANGELOG.md](CHANGELOG.md) for the change history.
 
 ---
 
@@ -56,7 +69,7 @@ For an existing suite with the maintenance interface, `sudo ./install.sh --upgra
 | **Platform** | Raspberry Pi 3/4/5, Debian Bookworm/Trixie (64-bit) |
 | **Pi-hole** | v6.x (installed by this script) |
 | **Unbound** | Installed and configured to port 5335 |
-| **Python** | 3.12+ (for optional Suite API) |
+| **Python** | 3.10+ (for the optional Suite API and maintenance panel) |
 | **User** | Normal user with sudo |
 
 Install prerequisites manually (optional):
@@ -125,8 +138,6 @@ Standalone recovery and diagnostic tool. Accessible globally:
 sudo pihole-rescue
 ```
 
-![Rescue Menu](docs/assets/screenshot_rescue_menu.png)
-
 | Option | Action |
 |--------|--------|
 | 1 | System status check (services, DNS, ports, temperature) |
@@ -141,14 +152,6 @@ sudo pihole-rescue
 | 10 | Router / client DNS hint (FritzBox guide) |
 | 11 | Show last report / log |
 | 0 | Exit |
-
-**System Status:**
-
-![System Status](docs/assets/screenshot_status_check.png)
-
-**DNS Check:**
-
-![DNS Check](docs/assets/screenshot_dns_check.png)
 
 ---
 
@@ -170,23 +173,29 @@ Available flags: `--no-apt`, `--no-upgrade`, `--no-gravity`, `--restart-ftl`, `-
 
 ```
 Pi-hole-Unbound-PiAlert-Setup/
-├── install.sh                     # Main installer
-├── start_suite.py                 # Optional REST API (FastAPI/uvicorn)
-├── requirements.txt               # Python deps for Suite API
-├── .env.example                   # Environment variables template
+├── install.sh                     # Main host/container installer
+├── start_suite.py                 # Optional authenticated API and DNS dashboard
+├── maintenance_web.py             # Browser maintenance panel and session security
+├── maintenance_runner.py          # Privileged maintenance job runner
+├── maintenance_backups.py         # Verified backup operations
+├── maintenance_config.py          # Caddy and LAN configuration validation
+├── maintenance_install.py         # Maintenance panel provisioning
+├── requirements.txt               # Python API and test dependencies
+├── .env.example                   # Environment variable template
+├── dashboard/                     # Read-only DNS monitoring dashboard
+├── web/                           # Maintenance panel assets
+├── deploy/                        # systemd, Caddy, and sudo policy files
 ├── scripts/
+│   ├── install_maintenance_web.sh # Staged/live maintenance installer
+│   ├── rollback_maintenance_web.sh # Validated deployment rollback
 │   ├── console_menu.sh            # Interactive management menu
-│   ├── rescue_menu.sh             # Rescue & backup menu (sudo pihole-rescue)
-│   ├── post_install_check.sh      # Post-install verification
-│   ├── nightly_test.sh            # Nightly DNS/service test
-│   ├── repo_selftest.sh           # Repo integrity self-test
-│   └── lib/
-│       └── ui.sh                  # Shared UI library (colors, log helpers)
-├── tools/
-│   └── pihole_maintenance_pro.sh  # Batch maintenance script
-└── docs/
-    ├── CONSOLE_MENU.md            # Full menu documentation
-    └── assets/                    # Screenshots
+│   ├── rescue_menu.sh             # Rescue and backup menu
+│   └── lib/ui.sh                  # Shared shell UI helpers
+├── tools/pihole_maintenance_pro.sh # Batch maintenance script
+├── tests/                         # Python, shell, browser, and upgrade tests
+├── docs/                          # Operations, design notes, reports, screenshots
+├── CHANGELOG.md
+└── README.de.md
 ```
 
 ---
@@ -241,9 +250,11 @@ Backups are stored in `/home/pi/pihole-rescue-backups/` and include:
 `start_suite.py` is an **optional** FastAPI server providing a JSON API for monitoring.
 It also hosts a modern, responsive, read-only web **Dashboard** for monitoring your DNS stack.
 
-- **Dashboard Access**: By default accessible at `http://127.0.0.1:8090/`.
-- **Remote Access**: Secure remote access is recommended via SSH port forwarding (`ssh -L 8090:127.0.0.1:8090 user@pihole-server`) or a reverse proxy.
+- **Dashboard Access**: On a configured host, open `https://<pihole-host>:8443/dashboard/` through Caddy. For local development, use `http://127.0.0.1:8090/dashboard/`.
+- **Maintenance Panel**: The root path `https://<pihole-host>:8443/` serves the separate maintenance panel when enabled.
+- **Remote Access**: The API binds to `127.0.0.1:8090`. Do not expose that port directly; use the configured Caddy LAN endpoint or an SSH tunnel.
 - **Authentication**: Dashboard login and API endpoints require the `SUITE_API_KEY`.
+- The dashboard holds the key in page memory only. Reloading the page requires signing in again.
 
 ```bash
 # Setup
@@ -255,22 +266,43 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
 # Start
+set -a
+. ./.env
+set +a
 python3 start_suite.py
 # The API stays on 127.0.0.1:8090; production API documentation is disabled.
 ```
+
+The DNS dashboard reports overall health, Pi-hole FTL status and version,
+configured upstreams and the count of parsed queries from the latest 100 log
+entries; Unbound status, port and DNS probe; optional NetAlertX reachability; and
+Suite API uptime, version and detected host IP. Missing source data is shown as
+unavailable, not as zero. The API provides `/health`, `/version`,
+`/urls`, `/pihole`, `/unbound`, `/netalertx`, `/stats`, `/dns`, `/leases`, and
+`/devices`. Maintenance endpoints are under `/api/session` and
+`/api/maintenance/`. Device discovery returns HTTP 503 until NetAlertX
+integration is configured.
+
+The maintenance panel shows the latest job result, its checks and system
+snapshot. It can run a system check, create and verify backups (up to 10, with
+download and deletion), and run a controlled update. Restore is performed locally
+through the documented recovery procedure, not from the browser.
 
 **Not required** for the core Pi-hole + Unbound stack.
 
 ### Secure maintenance web panel
 
-The optional maintenance panel provides system checks, verified backups and
-controlled updates at `https://pi.hole:8443/`. It remains disabled by default
-and is enabled explicitly with Caddy. Browser sign-in uses the existing
-`SUITE_API_KEY`:
+The optional maintenance panel provides a system check, verified backups,
+controlled updates, the latest job result, system snapshot, and check steps. It
+remains disabled by default. On a fresh host installation, enable it with:
 
 ```bash
 sudo ./install.sh --with-maintenance-web
 ```
+
+For an existing installation that already has the maintenance panel, update it
+with `sudo ./install.sh --upgrade-only`. Browser sign-in uses the existing
+`SUITE_API_KEY`.
 
 See [docs/MAINTENANCE_WEB.md](docs/MAINTENANCE_WEB.md) for prerequisites,
 certificate trust, security boundaries and rollback.
@@ -284,6 +316,9 @@ Network device monitoring (separate install):
 ```bash
 sudo ./install.sh --with-netalertx
 ```
+
+Without NetAlertX, device discovery remains unavailable; DNS monitoring and
+Pi-hole/Unbound operation continue normally.
 
 ---
 

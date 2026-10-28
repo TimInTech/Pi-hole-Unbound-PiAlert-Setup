@@ -20,6 +20,13 @@ from maintenance_web import (
 )
 
 
+def test_default_host_allowlist_does_not_embed_a_private_lan_address():
+    settings = MaintenanceSettings(api_key="test-key")
+
+    assert settings.allowed_hosts == frozenset({"pi.hole", "127.0.0.1", "localhost"})
+    assert settings.allowed_origins == frozenset({"https://pi.hole:8443"})
+
+
 class RecordingDispatcher:
     def __init__(self):
         self.calls: list[list[str]] = []

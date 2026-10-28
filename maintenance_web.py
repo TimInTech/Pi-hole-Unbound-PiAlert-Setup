@@ -34,8 +34,8 @@ LOGIN_MAX_FAILURES = 5
 START_RESERVATION_SECONDS = 60
 MAX_STATE_BYTES = 64 * 1024
 COOKIE_NAME = "pihole_maintenance_session"
-ALLOWED_HOSTS = frozenset({"pi.hole", "192.168.178.2", "127.0.0.1", "localhost"})
-ALLOWED_ORIGINS = frozenset({"https://pi.hole:8443", "https://192.168.178.2:8443"})
+ALLOWED_HOSTS = frozenset({"pi.hole", "127.0.0.1", "localhost"})
+ALLOWED_ORIGINS = frozenset({"https://pi.hole:8443"})
 WEB_DIRECTORY = Path(__file__).resolve().parent / "web"
 
 Dispatcher = Callable[[list[str]], None]

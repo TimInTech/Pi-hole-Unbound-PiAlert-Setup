@@ -17,14 +17,14 @@ for command in apt apt-get caddy curl service sudo systemctl; do
 done
 
 run_staged_install() {
-  PATH="$GUARD_DIR:$PATH" bash "$ROOT_DIR/scripts/install_maintenance_web.sh" --destdir "$DESTDIR" --hosts pi.hole,192.168.178.2 --lan-cidr 192.168.178.0/24
+  PATH="$GUARD_DIR:$PATH" bash "$ROOT_DIR/scripts/install_maintenance_web.sh" --destdir "$DESTDIR" --hosts pi.hole,192.168.1.2 --lan-cidr 192.168.1.0/24
 }
 
 run_staged_install
 ROOT_DIR="$ROOT_DIR" bash -c '
   source "$ROOT_DIR/install.sh"
-  run_existing_upgrade() { test "$MAINTENANCE_HOSTS" = pi.hole; test "$MAINTENANCE_LAN_CIDR" = 192.168.178.0/24; }
-  main --upgrade-only --maintenance-hosts pi.hole --maintenance-lan-cidr 192.168.178.0/24
+  run_existing_upgrade() { test "$MAINTENANCE_HOSTS" = pi.hole; test "$MAINTENANCE_LAN_CIDR" = 192.168.1.0/24; }
+  main --upgrade-only --maintenance-hosts pi.hole --maintenance-lan-cidr 192.168.1.0/24
 '
 if ROOT_DIR="$ROOT_DIR" bash -c '
   source "$ROOT_DIR/install.sh"
@@ -144,7 +144,7 @@ printf '%s\n' \
   $'\troot * /usr/share/caddy' \
   $'\tfile_server' \
   '}' > "$PACKAGED_DESTDIR/etc/caddy/Caddyfile"
-PATH="$GUARD_DIR:$PATH" bash "$ROOT_DIR/scripts/install_maintenance_web.sh" --destdir "$PACKAGED_DESTDIR" --hosts pi.hole,192.168.178.2 --lan-cidr 192.168.178.0/24
+PATH="$GUARD_DIR:$PATH" bash "$ROOT_DIR/scripts/install_maintenance_web.sh" --destdir "$PACKAGED_DESTDIR" --hosts pi.hole,192.168.1.2 --lan-cidr 192.168.1.0/24
 grep -Fqx 'import Caddyfile.d/*' "$PACKAGED_DESTDIR/etc/caddy/Caddyfile"
 grep -Fqx '    auto_https disable_redirects' "$PACKAGED_DESTDIR/etc/caddy/Caddyfile"
 ! grep -Fqx ':80 {' "$PACKAGED_DESTDIR/etc/caddy/Caddyfile"
@@ -272,9 +272,9 @@ grep -Fq '/health /urls /pihole /unbound /netalertx /stats' "$CADDY_SNIPPET"
 assert_mode "$CADDY_MAIN" 644
 assert_mode "$CADDY_SNIPPET" 644
 test "$(grep -Fxc 'import Caddyfile.d/*' "$CADDY_MAIN")" = 1
-grep -Fqx 'pi.hole:8443, 192.168.178.2:8443 {' "$CADDY_SNIPPET"
+grep -Fqx 'pi.hole:8443, 192.168.1.2:8443 {' "$CADDY_SNIPPET"
 grep -Fqx '    tls internal' "$CADDY_SNIPPET"
-grep -Fqx '    @lan remote_ip 192.168.178.0/24 127.0.0.1 ::1' "$CADDY_SNIPPET"
+grep -Fqx '    @lan remote_ip 192.168.1.0/24 127.0.0.1 ::1' "$CADDY_SNIPPET"
 grep -Fqx '    handle @lan {' "$CADDY_SNIPPET"
 grep -Fqx '            reverse_proxy 127.0.0.1:8090' "$CADDY_SNIPPET"
 grep -Fqx '        respond "Not found" 404' "$CADDY_SNIPPET"

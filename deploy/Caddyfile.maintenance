@@ -1,6 +1,6 @@
-pi.hole:8443, 192.168.178.2:8443 {
+pi.hole:8443, 192.168.1.2:8443 {
     tls internal
-    @lan remote_ip 192.168.178.0/24 127.0.0.1 ::1
+    @lan remote_ip 192.168.1.0/24 127.0.0.1 ::1
     handle @lan {
         request_body {
             max_size 8KB

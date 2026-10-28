@@ -8,7 +8,7 @@ Die vorhandene lokale Pi-hole-Suite erhält eine deutschsprachige Weboberfläche
 über die ein Administrator den Systemzustand prüfen, ein verifiziertes Backup
 erstellen und einen kontrollierten Update-Lauf starten kann. Die Oberfläche ist
 auf dem produktiven Raspberry Pi unter `https://pi.hole:8443/` und
-`https://192.168.178.2:8443/` erreichbar.
+`https://<pihole-host>:8443/` erreichbar.
 
 ## Plattform und Bestand
 
@@ -54,14 +54,14 @@ Läufe nicht gleichzeitig Pi-hole, APT oder die Backupdaten verändern.
 - Cookie: `Secure`, `HttpOnly`, `SameSite=Strict`, `Path=/`.
 - Zustandsänderungen erfordern `POST`, einen sitzungsgebundenen CSRF-Token sowie
   einen erlaubten `Origin` (`https://pi.hole:8443` oder
-  `https://192.168.178.2:8443`).
+  `https://<pihole-host>:8443`).
 - Maximal fünf fehlgeschlagene Anmeldungen je Client innerhalb von fünf Minuten;
   danach Sperre bis zum Ende des Zeitfensters.
-- Kein CORS. Erlaubte Hosts: `pi.hole`, `192.168.178.2`, `127.0.0.1`, `localhost`.
+- Kein CORS. Erlaubte Hosts kommen aus der lokalen Wartungskonfiguration; Loopback bleibt für Tests erlaubt.
 - Produktiv sind Swagger und OpenAPI deaktiviert.
 - Sicherheitsheader: CSP ohne Fremdquellen, `frame-ancestors 'none'`,
   `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` und HSTS.
-- Caddy akzeptiert Port 8443 nur aus `192.168.178.0/24` und von Loopback.
+- Caddy akzeptiert Port 8443 nur aus dem konfigurierten LAN und von Loopback.
 
 ## Aktionen
 
