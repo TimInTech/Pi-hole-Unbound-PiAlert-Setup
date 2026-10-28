@@ -1,0 +1,16 @@
+[Unit]
+Description=Pi-hole maintenance system check
+After=network-online.target pihole-FTL.service unbound.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/usr/local/libexec/pihole-maintenance-runner check
+TimeoutStartSec=15min
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true

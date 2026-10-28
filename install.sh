@@ -64,6 +64,10 @@ FORCE=false
 AUTO_REMOVE_CONFLICTS=false
 INSTALL_NETALERTX=false
 INSTALL_PYTHON_SUITE=true
+INSTALL_MAINTENANCE_WEB=false
+UPGRADE_ONLY=false
+MAINTENANCE_HOSTS=""
+MAINTENANCE_LAN_CIDR=""
 
 # Ports
 UNBOUND_PORT=5335
@@ -137,7 +141,7 @@ ensure_suite_env_file() {
   sudo mkdir -p "$suite_data_dir" 2>/dev/null || true
 
   if [[ ! -f "$ENV_FILE" ]] || ! grep -q '^SUITE_API_KEY=' "$ENV_FILE" 2>/dev/null; then
-    echo "SUITE_API_KEY=$(openssl rand -hex 32)" > "$ENV_FILE"
+    echo "SUITE_API_KEY=$(openssl rand -hex 32)" >> "$ENV_FILE"
   fi
 
   grep -q '^SUITE_PORT=' "$ENV_FILE" 2>/dev/null || echo "SUITE_PORT=$PYTHON_SUITE_PORT" >> "$ENV_FILE"
@@ -150,17 +154,43 @@ ensure_suite_env_file() {
 }
 
 
-ensure_python_venv() {
-  # Ensure a working venv with an executable python at $venv_dir/bin/python
-  # Recreates the venv if python is missing (common after interrupted installs).
-  local venv_dir="$1"
-  [[ -z "$venv_dir" ]] && return 1
+assert_no_symlink_in_path() {
+  local path="$1"
+  [[ "$path" = /* ]] || {
+    log_error "Expected an absolute path: $path"
+    return 1
+  }
+  while [[ "$path" != "/" ]]; do
+    if sudo test -L "$path"; then
+      log_error "Refusing symlinked privileged path: $path"
+      return 1
+    fi
+    path="$(dirname -- "$path")"
+  done
+}
 
-  if [[ ! -x "$venv_dir/bin/python" ]]; then
-    log_warning "Python venv missing/broken at $venv_dir; recreating"
-    sudo rm -rf "$venv_dir" 2>/dev/null || true
-    python3 -m venv "$venv_dir"
+rebuild_python_venv() {
+  # Never execute a pre-existing virtualenv: older releases made it writable
+  # by the service account, so it is untrusted during an upgrade.
+  local venv_dir="$1"
+  local previous_dir=""
+  [[ -z "$venv_dir" ]] && return 1
+  assert_no_symlink_in_path "$venv_dir" || return 1
+  if [[ -e "$venv_dir" ]]; then
+    previous_dir="$(sudo mktemp -d "$(dirname -- "$venv_dir")/.venv-backup.XXXXXX")" || return 1
+    sudo chmod 0700 "$previous_dir"
+    sudo mv -- "$venv_dir" "$previous_dir/venv" || return 1
   fi
+  # Build at the final path: console-script shebangs embed that path.
+  if ! sudo /usr/bin/python3 -m venv "$venv_dir" || ! sudo "$venv_dir/bin/pip" install -r "$SCRIPT_DIR/requirements.txt"; then
+    sudo rm -rf -- "$venv_dir"
+    if [[ -n "$previous_dir" ]]; then
+      sudo mv -- "$previous_dir/venv" "$venv_dir"
+    fi
+    return 1
+  fi
+  sudo chown -R root:root "$venv_dir"
+  sudo chmod 0755 "$venv_dir"
 }
 
 # =============================================
@@ -300,7 +330,18 @@ parse_args() {
       --install-netalertx|--with-netalertx) INSTALL_NETALERTX=true ;;
       --skip-netalertx) INSTALL_NETALERTX=false ;;
       --skip-python-api) INSTALL_PYTHON_SUITE=false ;;
-      --minimal) INSTALL_NETALERTX=false; INSTALL_PYTHON_SUITE=false ;;
+      --with-maintenance-web) INSTALL_MAINTENANCE_WEB=true ;;
+      --upgrade-only) UPGRADE_ONLY=true ;;
+      --skip-maintenance-web) INSTALL_MAINTENANCE_WEB=false ;;
+      --maintenance-hosts|--maintenance-lan-cidr)
+        [[ $# -ge 2 ]] || { log_error "$1 requires a value"; exit 1; }
+        case "$1" in
+          --maintenance-hosts) MAINTENANCE_HOSTS="$2" ;;
+          --maintenance-lan-cidr) MAINTENANCE_LAN_CIDR="$2" ;;
+        esac
+        shift
+        ;;
+      --minimal) INSTALL_NETALERTX=false; INSTALL_PYTHON_SUITE=false; INSTALL_MAINTENANCE_WEB=false ;;
       *) log_error "Unknown option: $1"; exit 1 ;;
     esac
     shift
@@ -625,8 +666,28 @@ install_packages() {
 # =============================================
 # UNBOUND CONFIGURATION
 # =============================================
+preserve_existing_unbound() {
+  local forward_file="$1"
+  [[ -e "$forward_file" ]] || return 1
+  [[ -f "$forward_file" && ! -L "$forward_file" ]] || return 2
+  sudo unbound-checkconf >/dev/null 2>&1 || return 2
+  systemctl is-active --quiet unbound || return 2
+  return 0
+}
+
 configure_unbound() {
   [[ "$UNBOUND_OK" == true && "$FORCE" != true ]] && { log "✅ Unbound OK"; return; }
+
+  local preserve_status=0
+  preserve_existing_unbound /etc/unbound/unbound.conf.d/forward.conf || preserve_status=$?
+  if [[ "$preserve_status" == 0 ]]; then
+    log "Preserving existing active Unbound configuration"
+    update_state UNBOUND_OK true
+    return
+  elif [[ "$preserve_status" != 1 ]]; then
+    log_error "Existing Unbound configuration is unsafe, invalid or inactive; refusing to replace it"
+    return 1
+  fi
 
   log "Configuring Unbound DNS with DoT (DNS-over-TLS)..."
   if ! $DRY_RUN; then
@@ -790,7 +851,7 @@ EOF
 # PI-HOLE SETUP
 # =============================================
 configure_pihole_v6_toml_upstreams() {
-  local toml_file="/etc/pihole/pihole.toml"
+  local toml_file="$PIHOLE_TOML"
 
   # Create the file if it doesn't exist
   if [[ ! -f "$toml_file" ]]; then
@@ -873,9 +934,9 @@ configure_pihole_v6_toml_upstreams() {
       }
     ' "$toml_file" > "$temp_file"
 
+    sudo chown --reference="$toml_file" "$temp_file"
+    sudo chmod --reference="$toml_file" "$temp_file"
     sudo mv "$temp_file" "$toml_file"
-    sudo chown pihole:pihole "$toml_file"
-    sudo chmod 0644 "$toml_file"
   )
 
   # Prefer FTL CLI config as well (does validation); do not rely on it for persistence.
@@ -1089,18 +1150,71 @@ setup_netalertx() {
 # =============================================
 # PYTHON SUITE SETUP
 # =============================================
-setup_python_suite() {
-  if [[ "$PY_SUITE_OK" == true && "$FORCE" != true ]]; then
-    if [[ "$CONTAINER_MODE" == false ]] && command -v systemctl >/dev/null 2>&1; then
-      local py_state
-      py_state="$(systemctl is-active pihole-suite.service 2>/dev/null || true)"
-      if [[ "$py_state" == "active" ]]; then
-        log "✅ Python Suite OK"
-        return
-      fi
-    fi
+install_python_suite_app_files() {
+  local suite_app_dir="$STATE_DIR/app"
+  local source_file relative_file
+  local -a app_files=(
+    "start_suite.py"
+    "maintenance_web.py"
+    "maintenance_backups.py"
+    "maintenance_config.py"
+    "dashboard/index.html"
+    "dashboard/app.js"
+    "dashboard/style.css"
+    "web/maintenance.html"
+    "web/maintenance.css"
+    "web/maintenance.js"
+  )
 
-    # Stale state flag; force the step to run again.
+  for relative_file in "${app_files[@]}"; do
+    source_file="$SCRIPT_DIR/$relative_file"
+    [[ -f "$source_file" && ! -L "$source_file" ]] || {
+      log_error "Missing or unsafe suite source: $source_file"
+      return 1
+    }
+  done
+
+  assert_no_symlink_in_path "$STATE_DIR" || exit 1
+  # Claim the legacy state parent before examining a service-owned child, so
+  # the service account cannot race this privileged migration.
+  sudo install -d -o root -g root -m 0755 "$STATE_DIR"
+  assert_no_symlink_in_path "$suite_app_dir" || exit 1
+  # Preserve legacy files behind a root-only directory while replacing the
+  # potentially service-writable application tree with a trusted one.
+  if [[ -e "$suite_app_dir" ]]; then
+    local archived_dir
+    if [[ -n "${maintenance_backup_dir:-}" ]]; then
+      archived_dir="$maintenance_backup_dir"
+      [[ ! -e "$archived_dir/app-tree" && ! -L "$archived_dir/app-tree" ]] || return 1
+      sudo mv -- "$suite_app_dir" "$archived_dir/app-tree"
+    else
+      archived_dir="$(sudo mktemp -d "$STATE_DIR/app-backup.XXXXXX")"
+      sudo chmod 0700 "$archived_dir"
+      sudo mv -- "$suite_app_dir" "$archived_dir/app"
+    fi
+  fi
+  sudo install -d -o root -g root -m 0755 "$STATE_DIR" "$suite_app_dir" "$suite_app_dir/web" "$suite_app_dir/dashboard"
+  for relative_file in "${app_files[@]}"; do
+    source_file="$SCRIPT_DIR/$relative_file"
+    [[ -f "$source_file" && ! -L "$source_file" ]] || {
+      log_error "Required Python Suite app file missing or unsafe: $source_file"
+      exit 1
+    }
+    sudo install -o root -g root -m 0644 "$source_file" "$suite_app_dir/$relative_file"
+  done
+}
+
+setup_python_suite() {
+  if ! $DRY_RUN; then
+    # start_suite.py imports maintenance_web unconditionally. Keep the complete
+    # app tree installed even when privileged maintenance exposure stays off.
+    install_python_suite_app_files
+  fi
+
+  if [[ "$PY_SUITE_OK" == true && "$FORCE" != true ]]; then
+    # Always complete the one-time ownership and unit hardening migration.
+    # A running legacy service is not evidence that its venv is trustworthy.
+    log "Migrating Python Suite runtime to the hardened layout"
     update_state PY_SUITE_OK false
   fi
 
@@ -1115,43 +1229,30 @@ setup_python_suite() {
 
     ensure_suite_env_file "$suite_data_dir"
 
-    # Keep a stable, system-accessible copy of the suite code under $STATE_DIR.
-    sudo mkdir -p "$suite_app_dir" 2>/dev/null || true
-    if [[ -f "$SCRIPT_DIR/start_suite.py" ]]; then
-      sudo install -m 0644 "$SCRIPT_DIR/start_suite.py" "$suite_entrypoint"
-
-      # Install dashboard assets
-      if [[ -d "$SCRIPT_DIR/dashboard" ]]; then
-        sudo mkdir -p "$suite_app_dir/dashboard"
-        sudo cp -r "$SCRIPT_DIR/dashboard/"* "$suite_app_dir/dashboard/"
-        sudo chmod -R 0644 "$suite_app_dir/dashboard/"*
-        sudo find "$suite_app_dir/dashboard" -type d -exec chmod 0755 {} \;
-      fi
-    else
-      log_warning "Python Suite entrypoint missing at $SCRIPT_DIR/start_suite.py (service may fail to start)"
-    fi
-
     if ! getent group "$suite_group" >/dev/null 2>&1; then
       sudo groupadd --system "$suite_group"
     fi
     if ! id -u "$suite_user" >/dev/null 2>&1; then
       sudo useradd --system --no-create-home --shell /usr/sbin/nologin --gid "$suite_group" "$suite_user"
     fi
-    sudo mkdir -p "$suite_state_dir"
+    sudo install -d -o root -g root -m 0755 "$suite_state_dir"
+    sudo install -d -o root -g "$suite_group" -m 0750 "$suite_data_dir" "$suite_state_dir/jobs"
+    sudo install -d -o root -g "$suite_group" -m 0770 "$suite_state_dir/sessions"
 
-    ensure_python_venv "$suite_venv_dir"
-    "$suite_venv_dir/bin/pip" install -r "$SCRIPT_DIR/requirements.txt" || {
+    rebuild_python_venv "$suite_venv_dir" || {
       log_error "Python requirements failed"; exit 1;
     }
-    sudo chown -R "$suite_user":"$suite_group" "$suite_data_dir" "$suite_app_dir" "$suite_venv_dir" "$suite_state_dir" 2>/dev/null || true
+    sudo chown -R root:root "$suite_app_dir" "$suite_venv_dir"
+    sudo chmod 0755 "$suite_state_dir" "$suite_app_dir" "$suite_app_dir/web" "$suite_venv_dir"
+    sudo chown root:"$suite_group" "$suite_data_dir" "$suite_state_dir/jobs" "$suite_state_dir/sessions"
+    sudo chmod 0750 "$suite_data_dir" "$suite_state_dir/jobs"
+    sudo chmod 0770 "$suite_state_dir/sessions"
     sudo chown root:"$suite_group" "$ENV_FILE"
     sudo chmod 640 "$ENV_FILE"
     [[ -f "$suite_entrypoint" ]] || log_warning "Python Suite entrypoint missing at $suite_entrypoint (service may need code before start)"
 
     if [[ "$CONTAINER_MODE" == false ]]; then
       local protect_home_value="true"
-
-      local read_write_paths="$suite_state_dir"
 
       local tmp_unit
       tmp_unit="$(mktemp)"
@@ -1169,13 +1270,15 @@ Restart=always
 RestartSec=3
 UMask=027
 RuntimeDirectory=pihole-suite
-StateDirectory=pihole-suite
 LogsDirectory=pihole-suite
 CacheDirectory=pihole-suite
-ReadWritePaths=$read_write_paths
+ReadOnlyPaths=$suite_app_dir $suite_venv_dir $suite_state_dir/jobs
+ReadWritePaths=$suite_data_dir $suite_state_dir/sessions
 PrivateTmp=true
 PrivateDevices=true
-NoNewPrivileges=true
+# The fixed, exact sudoers allow-list starts the three root-owned maintenance
+# units. NoNewPrivileges would disable sudo's required privilege transition.
+NoNewPrivileges=false
 ProtectSystem=strict
 ProtectHome=$protect_home_value
 ProtectKernelTunables=true
@@ -1187,7 +1290,9 @@ RestrictNamespaces=true
 RestrictSUIDSGID=true
 MemoryDenyWriteExecute=true
 SystemCallFilter=@system-service
-CapabilityBoundingSet=
+# The exact sudoers allow-list needs only this privilege transition; all
+# maintenance work remains in separate root-owned systemd units.
+CapabilityBoundingSet=CAP_SETUID CAP_SETGID
 [Install]
 WantedBy=multi-user.target
 EOF
@@ -1271,12 +1376,59 @@ run_healthchecks() {
 # =============================================
 # MAIN
 # =============================================
+validate_upgrade_arguments() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --upgrade-only) shift ;;
+      --maintenance-hosts|--maintenance-lan-cidr)
+        [[ $# -ge 2 && "$2" != --* ]] || { log_error "$1 requires a value"; return 1; }
+        shift 2 ;;
+      *) log_error "Selective upgrade does not support $1"; return 1 ;;
+    esac
+  done
+}
+
+run_existing_upgrade() {
+  local -a args=(--upgrade-only)
+  [[ -z "$MAINTENANCE_HOSTS" ]] || args+=(--hosts "$MAINTENANCE_HOSTS")
+  [[ -z "$MAINTENANCE_LAN_CIDR" ]] || args+=(--lan-cidr "$MAINTENANCE_LAN_CIDR")
+  "$SCRIPT_DIR/scripts/install_maintenance_web.sh" "${args[@]}"
+}
+
+guard_existing_install() {
+  local pihole_config="$1" unbound_config="$2" suite_app="$3"
+  if [[ -e "$pihole_config" || -L "$pihole_config" || -e "$unbound_config" || -L "$unbound_config" || -e "$suite_app" || -L "$suite_app" ]] \
+    || systemctl is-active --quiet pihole-FTL 2>/dev/null \
+    || systemctl is-active --quiet unbound 2>/dev/null; then
+    log_error "Existing installation detected; the full installer cannot safely roll back DNS, runtime and service state. Use a separately backed-up migration instead."
+    return 1
+  fi
+}
+
 main() {
+  local maintenance_backup_dir=""
   parse_args "$@"
+  if [[ "$UPGRADE_ONLY" == true ]]; then
+    validate_upgrade_arguments "$@" || return 1
+    run_existing_upgrade
+    return
+  fi
+  if [[ "$INSTALL_MAINTENANCE_WEB" == true && "$INSTALL_PYTHON_SUITE" != true ]]; then
+    log_error "--with-maintenance-web requires the Python API Suite"
+    exit 1
+  fi
+  if [[ "$INSTALL_MAINTENANCE_WEB" == true && "$CONTAINER_MODE" == true ]]; then
+    log_error "--with-maintenance-web is supported only in host mode"
+    exit 1
+  fi
+  guard_existing_install "$PIHOLE_TOML" /etc/unbound/unbound.conf.d/forward.conf "$STATE_DIR/app" || return 1
   init_runtime_paths
   init_state
   validate_state_against_system
   check_dependencies
+  if [[ "$INSTALL_MAINTENANCE_WEB" == true && "$DRY_RUN" == false ]]; then
+    maintenance_backup_dir="$("$SCRIPT_DIR/scripts/install_maintenance_web.sh" --backup-only)"
+  fi
   handle_systemd_resolved
   check_ports
   install_packages
@@ -1298,6 +1450,17 @@ main() {
   else
     log "⏭️  Skipping Python API Suite installation (--skip-python-api)"
     update_state PY_SUITE_OK true
+  fi
+
+  if [[ "$INSTALL_MAINTENANCE_WEB" == true ]]; then
+    if [[ "$DRY_RUN" == true ]]; then
+      log "DRY RUN: Would install privileged maintenance web exposure"
+    else
+      local -a maintenance_args=(--backup-dir "$maintenance_backup_dir" --hosts "$MAINTENANCE_HOSTS" --lan-cidr "$MAINTENANCE_LAN_CIDR")
+      "$SCRIPT_DIR/scripts/install_maintenance_web.sh" "${maintenance_args[@]}"
+    fi
+  else
+    log "⏭️  Skipping privileged maintenance web exposure (default; use --with-maintenance-web)"
   fi
   
   configure_local_dns_resolver
@@ -1360,4 +1523,6 @@ main() {
   echo "  3. Monitor with: ./check.sh"
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

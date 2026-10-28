@@ -9,15 +9,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const lastUpdateEl = document.getElementById('last-update');
 
     // API Key management
-    let apiKey = sessionStorage.getItem('suite_api_key');
+    // Do not persist the permanent API key in browser storage. It is held only
+    // for this page lifetime and must be entered again after a reload.
+    sessionStorage.removeItem('suite_api_key');
+    let apiKey = null;
 
     // Initialization
-    if (apiKey) {
-        showDashboard();
-        fetchData();
-    } else {
-        showAuth();
-    }
+    showAuth();
 
     // Event Listeners
     authForm.addEventListener('submit', async (e) => {
@@ -33,7 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (res.ok) {
                 apiKey = key;
-                sessionStorage.setItem('suite_api_key', key);
+                apiKeyInput.value = '';
                 authError.classList.add('hidden');
                 showDashboard();
                 fetchData();
@@ -48,7 +46,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     logoutBtn.addEventListener('click', () => {
-        sessionStorage.removeItem('suite_api_key');
         apiKey = null;
         apiKeyInput.value = '';
         showAuth();
@@ -67,13 +64,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateStatusIndicator(elementId, status) {
-        const el = document.getElementById(elementId);
+        const el = document.querySelector('#' + elementId);
         if (!el) return;
         el.className = 'status-indicator ' + status;
     }
 
     function updateElementText(elementId, text) {
-        const el = document.getElementById(elementId);
+        const el = document.querySelector('#' + elementId);
         if (el) el.textContent = text;
     }
 
@@ -99,7 +96,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const now = new Date();
         updateElementText('last-update', `Letzte Aktualisierung: ${now.toLocaleTimeString()}`);
 
-        updateStatusIndicator('overall-status', 'loading');
+        updateStatusIndicator('overall-status .status-indicator', 'loading');
         updateElementText('overall-status .status-text', 'Wird geladen...');
 
         const [health, urls, pihole, unbound, netalertx, stats] = await Promise.all([
@@ -144,7 +141,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             updateElementText('pihole-version', pihole.pihole_version);
 
-            let upstreamsStr = 'Keine / Unbekannt';
+            let upstreamsStr = pihole.upstreams === null ? 'Unbekannt (nicht lesbar)' : 'Keine konfiguriert';
             if (pihole.upstreams && pihole.upstreams.length > 0) {
                 upstreamsStr = pihole.upstreams.join(', ');
 
@@ -153,10 +150,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     const expectedUpstream = `127.0.0.1#${unbound.port}`;
                     if (!pihole.upstreams.includes(expectedUpstream)) {
                         upstreamsStr += ' (Warnung: Unbound nicht konfiguriert!)';
-                        updateStatusIndicator('pihole-status-indicator', 'warning');
+                        if (pihole.ftl_active) updateStatusIndicator('pihole-status-indicator', 'warning');
                         allHealthy = false;
                     }
                 }
+            } else {
+                if (pihole.ftl_active) updateStatusIndicator('pihole-status-indicator', 'warning');
+                allHealthy = false;
             }
             updateElementText('pihole-upstreams', upstreamsStr);
 
@@ -167,7 +167,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (stats) {
-            updateElementText('pihole-recent-queries', stats.recent_queries);
+            updateElementText('pihole-recent-queries', stats.recent_queries ?? 'Nicht verfügbar');
         }
 
         // Process Unbound

@@ -45,6 +45,8 @@ sudo ./install.sh
 
 > Clone as a **normal user** (`pi`), not root. The installer requires `sudo ./install.sh`.
 
+For an existing suite with the maintenance interface, `sudo ./install.sh --upgrade-only` updates the suite and web files without changing DNS configuration or the Python environment. See [docs/MAINTENANCE_WEB.md](docs/MAINTENANCE_WEB.md) for prerequisites and rollback.
+
 ---
 
 ## ✅ Requirements
@@ -254,10 +256,24 @@ pip install -r requirements.txt
 
 # Start
 python3 start_suite.py
-# API docs: http://127.0.0.1:8090/docs
+# The API stays on 127.0.0.1:8090; production API documentation is disabled.
 ```
 
 **Not required** for the core Pi-hole + Unbound stack.
+
+### Secure maintenance web panel
+
+The optional maintenance panel provides system checks, verified backups and
+controlled updates at `https://pi.hole:8443/`. It remains disabled by default
+and is enabled explicitly with Caddy. Browser sign-in uses the existing
+`SUITE_API_KEY`:
+
+```bash
+sudo ./install.sh --with-maintenance-web
+```
+
+See [docs/MAINTENANCE_WEB.md](docs/MAINTENANCE_WEB.md) for prerequisites,
+certificate trust, security boundaries and rollback.
 
 ---
 

@@ -43,6 +43,8 @@ sudo ./install.sh
 
 > Als **normaler Nutzer** klonen (z.B. `pi`), nicht als root. Der Installer wird via `sudo ./install.sh` ausgeführt.
 
+Für eine bereits laufende Suite mit Wartungsoberfläche aktualisiert `sudo ./install.sh --upgrade-only` ausschließlich Suite- und Webdateien. DNS-Konfiguration und Python-Environment bleiben erhalten; Voraussetzungen und Rollback stehen in [docs/MAINTENANCE_WEB.md](docs/MAINTENANCE_WEB.md).
+
 ---
 
 ## ✅ Voraussetzungen
@@ -252,10 +254,24 @@ pip install -r requirements.txt
 
 # Starten
 python3 start_suite.py
-# API-Doku: http://127.0.0.1:8090/docs
+# Die API bleibt auf 127.0.0.1:8090; die Produktivdokumentation ist deaktiviert.
 ```
 
 **Nicht erforderlich** für den Kern-Stack (Pi-hole + Unbound).
+
+### Sichere Wartungsoberfläche
+
+Die optionale Wartungsoberfläche bietet Systemcheck, verifiziertes Backup und
+kontrolliertes Update unter `https://pi.hole:8443/`. Sie bleibt standardmäßig
+deaktiviert und wird nur zusammen mit Caddy bewusst freigeschaltet. Die
+Browser-Anmeldung verwendet den bestehenden `SUITE_API_KEY`:
+
+```bash
+sudo ./install.sh --with-maintenance-web
+```
+
+Siehe [docs/MAINTENANCE_WEB.md](docs/MAINTENANCE_WEB.md) für Voraussetzungen,
+Zertifikatvertrauen, Sicherheitsgrenze und Rollback.
 
 ---
 

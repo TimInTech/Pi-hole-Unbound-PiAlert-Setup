@@ -1,0 +1,24 @@
+#!/usr/bin/python3
+"""Return only Pi-hole's configured DNS upstreams, with no user input."""
+import json
+import sys
+try:
+    import tomllib
+except ModuleNotFoundError:
+    try:
+        import tomli as tomllib
+    except ModuleNotFoundError:
+        print('Python 3.11+ or system tomli is required', file=sys.stderr)
+        sys.exit(1)
+
+if len(sys.argv) != 1:
+    sys.exit(2)
+try:
+    with open('/etc/pihole/pihole.toml', 'rb') as config:
+        upstreams = tomllib.load(config)['dns']['upstreams']
+    if not isinstance(upstreams, list) or any(not isinstance(item, str) for item in upstreams):
+        raise ValueError('Invalid upstream configuration')
+    print(json.dumps(upstreams))
+except (OSError, ValueError, KeyError, TypeError):
+    print('Unable to read Pi-hole upstream configuration', file=sys.stderr)
+    sys.exit(1)
