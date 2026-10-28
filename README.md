@@ -36,7 +36,7 @@ Pi-hole handles ad/tracker blocking; Unbound handles recursive DNS resolution wi
 
 **Documentation last checked:** 2026-10-28
 
-**Latest project update:** 2026-10-28 — [PR #32](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/pull/32), [PR #33](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/pull/33), and [PR #34](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/pull/34).
+**Latest project update:** 2026-10-28 — [PR #35](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/pull/35) refreshes the documentation and removes stale repository artifacts. The dashboard and maintenance updates are documented in [PR #32](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/pull/32), [PR #33](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/pull/33), and [PR #34](https://github.com/TimInTech/Pi-hole-Unbound-PiAlert-Setup/pull/34).
 
 - Integrated the read-only DNS dashboard with the authenticated maintenance panel.
 - Hardened upgrades, bounded DNS-log parsing, kept the API key out of persistent browser storage, and enabled least-privilege log access.
