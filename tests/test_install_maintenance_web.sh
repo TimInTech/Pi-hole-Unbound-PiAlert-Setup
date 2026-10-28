@@ -261,8 +261,8 @@ assert_mode "$SUDOERS" 440
 for action in check backup update; do
   grep -Fqx "pihole-suite ALL=(root) NOPASSWD: /usr/bin/systemctl start --no-block pihole-maintenance-${action}.service" "$SUDOERS"
 done
-test "$(grep -Ec '^pihole-suite ALL=' "$SUDOERS")" = 5
-grep -Fqx 'pihole-suite ALL=(root) NOPASSWD: /usr/local/libexec/pihole-suite-upstreams ""' "$SUDOERS"
+test "$(grep -Ec '^pihole-suite ALL=' "$SUDOERS")" = 4
+! grep -Fq '/usr/local/libexec/pihole-suite-upstreams' "$SUDOERS"
 ! grep -Eq '[*]|ALL[[:space:]]*=.*(sh|bash)' "$SUDOERS"
 
 CADDY_MAIN="$DESTDIR/etc/caddy/Caddyfile"
