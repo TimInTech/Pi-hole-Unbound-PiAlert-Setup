@@ -198,7 +198,7 @@ grep -F "/usr/bin/systemctl start --no-block pihole-maintenance-update.service" 
 - Modify: README.md
 - Modify: docs/CONSOLE_MENU.md
 - Create: docs/MAINTENANCE_WEB.md
-- Modify only after live verification: /home/z2-ubuntu/Wissensbasis/10_Projekte/Pi-hole-Unbound-PiAlert-Setup/Pi-hole Unbound PiAlert Setup Handover 2026-09-01.md
+- Modify only after live verification: the existing Pi-hole project handover in the Obsidian vault.
 
 **Interfaces:**
 - Consumes Tasks 1-3 and produces operator guidance plus authoritative live evidence.
